@@ -1,0 +1,45 @@
+[  0.0m] regent run: examples/linkcheck.md in /private/tmp/regent-projects/links-solo, budget 20 min
+[  0.5m] sitting 1 (full, continue): Cautious. I want to see it run on something before I believe it.
+[  0.5m]    piotr > I'd like a tool that tells me which links in my notes folder go nowhere. I run it once after a tidy-up.  How my notes look: headings use hash signs. Links are p
+[  1.5m]    claude > Write: /private/tmp/regent-projects/links-solo/deadlinks.py
+[  1.6m]    claude > Write: /private/tmp/regent-projects/links-solo/test_deadlinks.py
+[  1.7m]    claude > Bash: python3 test_deadlinks.py --make-demo test_notes && python3 test_deadlinks.py 2>&1 | tail 
+[  1.8m]    claude > Bash: python3 - <<'E'
+p='deadlinks.py';s=open(p).read()
+s=s.replace('''\\(\\s*(<[^>]*>|[^)\\s]*)
+[  1.9m]    claude > Edit: /private/tmp/regent-projects/links-solo/deadlinks.py
+[  1.9m]    claude > Bash: python3 test_deadlinks.py 2>&1 | tail -15; python3 deadlinks.py test_notes; echo "exit $?"
+[  2.0m]    check FAILED: 
+[  2.6m] sitting 2 (full, continue): Looks right so far, but I want proof on the real folder before I believe it.
+[  2.6m]    piotr > Thanks, the output is what I wanted: file, line, what it pointed at, and the same words on the second run.  Two things.  1. The name. The check I've been given 
+[  3.2m]    claude > Bash: mv deadlinks.py linkcheck.py && mv test_deadlinks.py test_linkcheck.py && rm -rf __pycache
+[  3.3m]    claude > Bash: python3 test_linkcheck.py 2>&1|grep -B3 -A12 FAIL: | head -30
+[  3.4m]    claude > Bash: python3 - <<'E'
+p='linkcheck.py';s=open(p).read()
+s=s.replace('line = pattern.sub(" ", lin
+[  3.5m]    check passed: OK
+[  3.5m] sitting 3: no time today, waved through
+[  3.6m]    check passed: OK
+[  4.0m]    (a dream left 3 ideas for his next sitting)
+[  4.1m] sitting 4 (skim, continue): Seven tests passing isn't the same as me seeing it right. Show me the output.
+[  4.1m]    piotr > Don't guess at my folder, you're right about that. Stay in your test folders.  I can't tell you the exact brackets. I typed my links as "see Shoes", "see First 
+[  4.3m]    claude > Bash: mkdir -p forms_demo/Notes forms_demo/Practical && cd forms_demo && printf '# Shoes\n' > Pr
+[  4.7m]    claude > Bash: python3 - <<'E'
+p='linkcheck.py';s=open(p).read()
+def r(a,b,n=1):
+    global s
+    assert 
+[  4.9m]    check passed: OK
+[  5.4m] sitting 5 (skim, continue): Not there yet. It ran and it looks straight, but I haven't seen the awkward cases.
+[  5.4m]    piotr > Thank you, that I can read. The three dead ones look right.  You showed me dead links. You didn't show me a good link that stayed quiet. Please run it again on 
+[  5.9m]    claude > Bash: python3 - <<'E'
+p='linkcheck.py';s=open(p).read()
+def r(a,b):
+    global s
+    assert s.co
+[  5.9m]    claude > Bash: python3 test_linkcheck.py 2>&1|grep -A12 "^FAIL"
+[  6.0m]    claude > Bash: sed -i '' 's|"\[a\](#See Shoes)\\n\[b\]\(.*\)\\n"})|"[a](#See Shoes)\\n[b]\1\\n", "Shoes.m
+[  6.2m]    check passed: OK
+[  6.6m] sitting 6 (skim, accept): Straight and quiet. I've seen the good ones pass, the twins named, Rings shouting. I'd use it.
+[  6.6m]    piotr > Thanks. That's what I wanted to see. Good links stay quiet, the two Twin files are named, the Rings-style missing note is reported in the same words, and #Wrong
+[  6.6m] stopped. wall 6.6 min, claude 4.2 min (64%), regent in the way 2.4 min. spend claude $1.62, regent $0.21. check passed. requirements [('req-01', 'built'), ('req-02', 'built'), ('req-03', 'built'), ('req-04', 'built'), ('req-05', 'built'), ('req-06', 'built'), ('req-07', 'built'), ('req-08', 'built')]

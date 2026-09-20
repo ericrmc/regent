@@ -1,0 +1,351 @@
+{
+ "turns": 12,
+ "wall_min": 29.5,
+ "claude_min": 15.6,
+ "regent_blocking_min": 16.2,
+ "claude_share": 0.53,
+ "cost_claude": 3.76,
+ "cost_regent": 1.4,
+ "check_ok": true,
+ "trust": 0.5,
+ "counts": {
+  "direct": 12,
+  "challenge": 11,
+  "constrain": 3,
+  "dreams": 4,
+  "step_backs": 4,
+  "rests": 5,
+  "looks": 8,
+  "waved": 1,
+  "fresh_sessions": 4
+ },
+ "requirements": [
+  {
+   "id": "req-01",
+   "status": "open",
+   "turn": 1,
+   "from_dream": false,
+   "text": "Running `python3 linkcheck.py <folder>` prints one line per dead link (file, line number, target), then a count line; says so in words if none; exits non-zero when any are dead, zero otherwise.",
+   "test": "Run it on the test folder with known dead links and see each listed with the right file and line; run it on a clean folder and see the all-clear message and exit code 0."
+  },
+  {
+   "id": "req-02",
+   "status": "open",
+   "turn": 1,
+   "from_dream": false,
+   "text": "Note-to-note links resolve relative to the folder of the file they are written in, including ../ and nested folders; links to moved or missing notes are reported dead every run, with no ignore list.",
+   "test": "Test folder has a nested note linking with ../ to a real note (not reported) and to a moved/nonexistent note (reported)."
+  },
+  {
+   "id": "req-03",
+   "status": "open",
+   "turn": 1,
+   "from_dream": false,
+   "text": "Heading links (Note.md#heading and same-file #heading) are checked against the hash-sign headings in the target file, and the matching rule for capitals and spaces is stated plainly.",
+   "test": "Test folder has a link to an existing heading (not reported) and to a missing heading (reported), plus a same-file one each way."
+  },
+  {
+   "id": "req-04",
+   "status": "open",
+   "turn": 1,
+   "from_dream": false,
+   "text": "No false alarms: web and email links are not reported, and anything inside a code block is not treated as a link.",
+   "test": "Test note containing an https link, a mailto link, and a broken-looking link inside a code block produces no report."
+  },
+  {
+   "id": "req-05",
+   "status": "open",
+   "turn": 1,
+   "from_dream": false,
+   "text": "The builder states which link forms it recognises (round-bracket, double-square-bracket) and what it does with an unrecognised one, rather than silently skipping.",
+   "test": "I read the builder's reply and see a plain answer, and a test note using the other form shows the behaviour described."
+  },
+  {
+   "id": "req-06",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "Each dead-link line says the reason in words: either 'no such note' or 'note found, no such heading'.",
+   "test": "Run it on testnotes: the Missing.md line says no such note, the #no such heading line and the Shoes#Heels line say no such heading. I can tell them apart without opening a file."
+  },
+  {
+   "id": "req-07",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "When a dead note link names a note that does exist elsewhere in the folder (moved or renamed by folder), the line adds where it is, e.g. 'found at Old/Shoes.md'. If several match, list them all. If none, say nothing extra. This is a hint only; the link is still reported dead.",
+   "test": "Add a case to testnotes where a note was moved into a subfolder and another note still links the old place: the line shows the new path. Missing.md, which exists nowhere, gets no hint."
+  },
+  {
+   "id": "req-08",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "The final count line also states how many NOT CHECKED lines there were, e.g. '6 dead link(s), 2 not checked.' Exit code unchanged: only dead links make it non-zero.",
+   "test": "On testnotes the last line reads 6 dead and 2 not checked; on clean it still says No dead links (and mentions not checked only if there are some)."
+  },
+  {
+   "id": "req-09",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "File names are matched with exact capitals on every machine: [[first call]] is dead when the file is First Call.md, reported as 'no such note; found at First Call.md'.",
+   "test": "A test note in testnotes links [[first call]]; it shows in the output as dead with the found-at hint, and a unit test fails without the fix."
+  },
+  {
+   "id": "req-10",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "A folder never counts as a note: [[Shoes]] with a folder Shoes/ but no Shoes.md is dead; if Shoes.md exists too, it is fine.",
+   "test": "testnotes has a folder with the same name as a missing note, linked from a note; it appears in the dead list."
+  },
+  {
+   "id": "req-11",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "A link that climbs above the notes folder (../../x.md) is reported dead with the reason 'points outside the folder' and the tool does not look there.",
+   "test": "testnotes has a note whose link climbs too high; the output line says 'points outside the folder'."
+  },
+  {
+   "id": "req-12",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "Inline links whose file name has round brackets (Shoes (2).md, or <Shoes (2).md>) are read correctly, checked against the real file, and anything still not handled is printed as NOT CHECKED, not skipped.",
+   "test": "testnotes has a note called 'Shoes (2).md' linked from another with a working link that is not reported, plus a broken one that is."
+  },
+  {
+   "id": "req-13",
+   "status": "built",
+   "turn": 4,
+   "from_dream": false,
+   "text": "Headings with bold/italic marks or a link inside them are matched by their plain text (\"## The *first* call\" is reached by \"The first call\"); underline-style (=== / ---) headings and 4-space-indented lines are either handled or stated plainly, and anything not handled is printed as NOT CHECKED, not skipped silently.",
+   "test": "testnotes contains a note with \"## The *first* call\", an underline-style heading, and a link on a 4-space-indented list continuation; running the tool shows no false alarm for the first, and the builder's stated rule matches the printed output for the other two."
+  },
+  {
+   "id": "req-14",
+   "status": "built",
+   "turn": 5,
+   "from_dream": true,
+   "text": "Each dead-link and NOT CHECKED line carries the column where its link starts (File.md:2:14: target (reason)); the column points at the real character in the original line, even when [[..]] and inline links share a line, and links on one line print in the order they sit. The count line is unchanged.",
+   "test": "Run on testnotes; open Moved.md and Cases.md, count characters to each link on the two-link lines, and the two lines differ by a column that points at the right link."
+  },
+  {
+   "id": "req-15",
+   "status": "built",
+   "turn": 5,
+   "from_dream": false,
+   "text": "Heading matching ignores punctuation on both sides (as well as capitals, hyphen-as-space, runs of spaces), stated in one plain line: '## Who signs? (Rings)' is reached by 'Who signs', 'who-signs' and 'Who signs? (Rings)'; a wrong word is still dead.",
+   "test": "A test note has that heading; three good links to it are not reported and a link with a wrong word is reported 'note found, no such heading'."
+  },
+  {
+   "id": "req-16",
+   "status": "built",
+   "turn": 5,
+   "from_dream": false,
+   "text": "Only closing hashes preceded by a space are stripped from a hash heading: '## C#' is the heading 'C#', '## Rings ##' is 'Rings'.",
+   "test": "Tests: a link to Note#C# is fine and a link to Note#C is dead; a link to #Rings reaches '## Rings ##'."
+  },
+  {
+   "id": "req-17",
+   "status": "built",
+   "turn": 6,
+   "from_dream": false,
+   "text": "Accented and Polish letters match whether a file name or heading is stored as one character or as letter plus loose accent: [[Żałoba]] reaches a file called Żałoba.md in either form, and '#Żałoba' reaches the heading in either form. Capitals still count exactly for file names (Ż is not ż), and a wrong letter is still dead.",
+   "test": "testnotes gets a file whose name is written in the loose-accent form and another in the one-character form, plus notes linking to each in the other form. Both links are fine; a link with a wrong letter is dead. I can see them in the output list (or absent from it) and the tests show it failing first."
+  },
+  {
+   "id": "req-18",
+   "status": "built",
+   "turn": 6,
+   "from_dream": false,
+   "text": "A note that cannot be opened (a broken shortcut named X.md, or unreadable) does not stop the run and prints no Python error. It is printed as a NOT CHECKED line saying it could not be read, the other notes are still checked, and the count line includes it in 'not checked'.",
+   "test": "testnotes gets a broken shortcut named Broken.md. Running the tool prints 'Broken.md:1:1: NOT CHECKED could not read' (or similar), the rest of the list is unchanged, and no traceback appears."
+  },
+  {
+   "id": "req-19",
+   "status": "built",
+   "turn": 6,
+   "from_dream": false,
+   "text": "The rule for a [[Name]] link written inside a subfolder is tested and stated in one line in the docstring: it is looked for relative to the folder of the note it is written in, like any other link. [[Shoes]] in sub/ does not find the top Shoes.md, and is reported dead with 'found at Shoes.md'.",
+   "test": "A test named for this exists and passes, and the docstring line is there when I read the file. sub/Deep.md-style output shows the 'found at' hint."
+  },
+  {
+   "id": "req-20",
+   "status": "built",
+   "turn": 7,
+   "from_dream": true,
+   "text": "After the count line, when there are 'no such note' dead links, print a short 'Wanted notes' list: each missing note name once, with how many links point at it and the files they are in, most wanted first. The same name written as Shoes.md and [[Shoes]] counts as one. Heading-only dead links ('note found, no such heading') never appear in it. With no 'no such note' links, no list is printed. Per-link lines, count line and exit code are unchanged.",
+   "test": "In a test folder, three notes link to a missing Family and one to a missing Gloves. The run shows Family with 3 and its three file names, then Gloves with 1. A folder with no dead links prints no Wanted list. A heading-only dead link does not appear. The same missing name written two ways counts once."
+  },
+  {
+   "id": "req-21",
+   "status": "built",
+   "turn": 8,
+   "from_dream": false,
+   "text": "In the 'Wanted notes' list, a missing note is one entry however it was written, keyed by where it would sit from the top of the notes folder: 'Old/Shoes' written as ../Old/Shoes in sub/Deep.md and as Old/Shoes.md or [[Old/Shoes]] at the top is one entry, shown as 'Old/Shoes'. [[Family]] in sub/ (sub/Family) and [[Family]] at the top (Family) stay separate, since they are different places. Capitals still count. Link counts and file lists add up across the ways of writing it. Per-link lines, count line and exit code unchanged.",
+   "test": "Test folder: top A.md has [[Old/Shoes]], sub/B.md has [](../Old/Shoes.md), sub/C.md has [[Family]] and top D.md has [[Family]]. The list shows 'Old/Shoes: 2 links, in A.md, sub/B.md' and two separate Family entries (sub/Family and Family) with one link each. Then I run testnotes and see '../Old/Shoes' gone from the list, replaced by 'Old/Shoes'."
+  },
+  {
+   "id": "req-22",
+   "status": "built",
+   "turn": 8,
+   "from_dream": true,
+   "text": "After the count line and any Wanted notes list, print 'Not linked from anywhere:' followed by one note per line, being every .md note that no other note links to. A link counts however it is written ([[Name]] from any place it resolves to, [t](x.md), with or without a #heading). A note that only links to itself is still listed. Only links that reach a real note count, so a dead link does not rescue anything. Nothing is printed when every note is linked. The list is information only: it does not change the dead-link count or the exit code, and it prints even when there are no dead links.",
+   "test": "Test folder: A links to B, B links to nothing, C is linked from no one, D links only to itself. The list shows A, C and D and not B, and the test says plainly that A is listed because nobody points at it. Then I run it on my real copy, open two or three listed notes, and check by eye that nothing points at them. A note I know is linked showing up would mean it is wrong."
+  },
+  {
+   "id": "req-23",
+   "status": "built",
+   "turn": 9,
+   "from_dream": false,
+   "text": "Code blocks are read properly. A fenced block opens only with a line of three or more backticks (or tildes) with no more backticks after them on that line, and closes only with a fence of the same character at least as long. A line like ```word``` is ordinary text, so a link after it is still checked. A fenced block that never closes is printed as a NOT CHECKED line giving the line where it opened, saying the rest of the note was not checked, and counted in 'not checked'. Links inside a properly closed block are still never reported.",
+   "test": "Make a test note with: a closed ``` block containing a dead link (not reported); a ```word``` line followed by a dead link (reported, right line and column); and a second note with an unclosed ``` block (one NOT CHECKED line naming the opening line, counted in the count line). The tests fail first, then pass. Run it on the test folder and read the lines."
+  },
+  {
+   "id": "req-24",
+   "status": "built",
+   "turn": 9,
+   "from_dream": true,
+   "text": "Print copy (idea I5): `python3 linkcheck.py notes/ --print` also writes print.txt next to the notes folder, never inside it. It has every note in folder-then-name order, each starting on a new page (form feed) with its path as a heading. Each dead link is marked in the text where it sits, like `see Family [DEAD: no such note]`, and each unreadable or doubtful link as [NOT CHECKED]. Working links are left as they are and nothing else is added. If print.txt already exists and does not start with the line 'linkcheck print copy', it stops with one plain line and writes nothing. Otherwise it replaces it. The normal screen output and exit code are unchanged. The notes are never touched.",
+   "test": "Run on testnotes/: print.txt exists next to it, and the notes folder is byte-for-byte the same. The Shoes-from-sub note and the Family link each show [DEAD] on the right line, and a good link shows none. The number of [DEAD] marks equals the dead count on the normal run, with matching [NOT CHECKED] marks. Run it twice and the file is identical. Put a different print.txt there first and see it refuse in one line. I print two pages and read them."
+  },
+  {
+   "id": "req-25",
+   "status": "built",
+   "turn": 10,
+   "from_dream": true,
+   "text": "Handover copy (idea I6): `python3 linkcheck.py notes/ --copy-to ../for-Kieran` makes a fresh copy of the whole notes folder. In the copy each dead link (no such note, or note found but no such heading, including [[Name|alias]]) becomes its plain words: [[Family]] -> Family, [rings](Family.md) -> rings, [[Family|the family]] -> the family. Working links and NOT CHECKED links are left exactly as written; code blocks are untouched; non-.md files are copied byte for byte. It stops with one plain line and writes nothing if the target already exists or is inside the notes folder, or if --print is given too. The original is never changed. Screen output and exit code are as for a normal run, plus one line saying the copy was made.",
+   "test": "Run --copy-to on testnotes/ into a new folder, then run the checker on the copy: 0 dead links. Open Rings in the copy: 'Family' has no brackets. Open Rings in the original: unchanged and still listed. Run again with the same target: one plain line, nothing overwritten. Same number of files in both folders, and only the dead-link lines differ."
+  },
+  {
+   "id": "req-26",
+   "status": "built",
+   "turn": 11,
+   "from_dream": true,
+   "text": "Last line proving it read everything (idea I8): after all other output, on every run including clean and empty ones, print 'Read N notes, M links (X note links, Y web/email, Z in code blocks skipped); K notes not opened.' N is every .md file under the folder. A folder with no notes prints 'Read 0 notes' and never a lone 'No dead links.' as if all were well. Exit code and other output unchanged.",
+   "test": "On testnotes/ the note count equals the .md files counted by hand. A note holding only a fenced block with a link raises the code-block figure by one and adds no dead link. A broken shortcut named X.md makes 'not opened' say 1. An empty folder says 'Read 0 notes'. The new tests are shown failing before they pass, and all old tests still pass."
+  },
+  {
+   "id": "req-27",
+   "status": "built",
+   "turn": 11,
+   "from_dream": false,
+   "text": "The usage message shown for wrong or missing arguments also names --print and --copy-to newfolder, one line each.",
+   "test": "Run `python3 linkcheck.py` with no folder and with a bad flag: the printed usage names both flags; exit code stays 2; a test checks it."
+  }
+ ],
+ "ideas": [
+  {
+   "text": "When two dead links sit on the same line, each report line carries the column where its link starts, like a compiler does: 'Moved.md:2:14: Laces' and 'Moved.md:2:27: Laces.md'. So no two lines ever look like the same complaint twice. Lines with only one dead link on them can stay as they are, or all get a column, whichever is simpler to read.",
+   "test": "Run it on testnotes. The two Moved.md:2 lines and any Cases.md line with two links on it differ by a column number. I count the links on the line in the file, open it, and the columns point at the right ones. A line with one link is not confusing. The count line stays the same.",
+   "came_from": "Day 60: 'Same line listed twice on the screen and I don't like that.' Moved.md:2 shows Laces and Laces.md on one line, and I couldn't tell whether it was a bug.",
+   "status": "taken",
+   "label": "I1",
+   "req": "req-14"
+  },
+  {
+   "text": "After each run it remembers the dead links it found, in one small plain file inside the folder it checked (say .linkcheck-last). Next run, each dead line that wasn't on the list last time gets 'NEW' at the front, and the count line adds 'N new since last run'. The Rings link stays listed every time and never gets NEW after the first run. I don't have to mark or ignore anything, and it never hides a line.",
+   "test": "Run on a copy of testnotes: every line is NEW the first time. Run again with no changes: no NEW, '0 new since last run'. Break one more link, run: only that line is NEW. Fix it and run: it drops off the list. Delete the .linkcheck-last file, run: everything is NEW again, no crash. The total count and the Rings-style line are the same as without the memory.",
+   "came_from": "Days 58-60 and the brief: I run it after a tidy-up and the old dead ones (Rings to the family note) will shout every time, so I can't see at a glance what my last tidy-up broke.",
+   "status": "declined",
+   "label": "I2",
+   "why": "It would make the tool write a hidden file into my notes folder. I don't want that, and I don't want to mark or manage a list. I accepted that the Rings link shouts on every run."
+  },
+  {
+   "text": "After the dead-link lines and the count, add a short second list headed 'Wanted notes': each missing note name once, with how many links point at it and which files they are in, most wanted first. Same name written two ways (Shoes.md and [[Shoes]]) counts as one. The list is only there when there are dead 'no such note' links. It borrows from the 'Wanted pages' list on wikis. The count line and the per-link lines do not change.",
+   "test": "Make a test folder where three notes link to a missing 'Family' and one to a missing 'Gloves'. The run must show Family with 3 and its three file names, then Gloves with 1. A folder with no dead links prints no Wanted list. A heading-only dead link (note found) never appears in it. On my real copy I should see the Rings-to-family link as one plain line at the bottom, and see at once whether twelve dead links are really two renames.",
+   "came_from": "Day 58 and day 60: it 'found the dead ones, more or less', and the same missing target sits in the output over and over. The Rings note pointing at a family note that doesn't exist yet, which I said would shout at me every time. I want it to shout once, not once per note.",
+   "status": "taken",
+   "label": "I3",
+   "req": "req-20"
+  },
+  {
+   "text": "After the count line, list the notes that no other note links to, one file per line, under 'Not linked from anywhere'. A link counts even if it is written as [[Name]] from a subfolder or with a #heading on the end. A note that only links to itself is still listed. It borrows from the orphaned pages report on wikis. It is information only and does not change the exit code or the dead-link count.",
+   "test": "Test folder: A links to B, B links to nothing, C is linked from no one, D links only to itself. The run must list C and D and not A's target B. But A itself is listed if nobody points at it, so the test says so plainly. Then run on the real copy: I open two or three listed files and check by eye that nothing points at them. If a note I know is linked shows up, it is wrong.",
+   "came_from": "Days 58 to 63: Marta and Thursday and Kieran, and the folder being the only thing I have to train him with. After the tidy-up, when I moved half the notes into folders, I don't know which notes got cut off from the rest. Kieran opening the folder should not find a note that nothing leads to.",
+   "status": "taken",
+   "label": "I4",
+   "req": "req-22"
+  },
+  {
+   "text": "A print option: `python3 linkcheck.py notes/ --print` writes one plain text file, print.txt, next to the notes (never inside them). It has every note in folder-then-name order, each starting on a new page with its path as a heading. Every dead link is marked in the text where it sits, like a proofreader's mark in the margin: `see Family [DEAD: no such note]`. Working links are left as they are. Nothing else is added. It only reads the notes and writes that one file. The starting rule that the tool only reads becomes: it may write print.txt when asked, and nothing else.",
+   "test": "Run it on testnotes/. print.txt exists and the notes folder is unchanged. Open the file: the Shoes-from-sub note and the Family link in the wanted folder each show a [DEAD] mark on the right line, and a good link shows none. The number of [DEAD] marks equals the dead count on the normal run, with the same 'not checked' notes marked [NOT CHECKED]. Run it twice and the file is identical. Print two pages of it and read them on the bus without the laptop.",
+   "came_from": "Days 58-65: 'Print the notes, bus 34' and 'ask her which ones are wrong'. The list of file:line:col is no use on paper on the 34 to Devonport. I would be turning pages to find line 6 of a note. Nula needs to see the mark in the sentence.",
+   "status": "taken",
+   "label": "I5",
+   "req": "req-24"
+  },
+  {
+   "text": "A handover copy: `python3 linkcheck.py notes/ --copy-to ../for-Kieran` makes a fresh copy of all the notes in a new folder. In the copy, each dead link is turned into its plain words, so `[[Family]]` becomes `Family` and `[rings](Family.md)` becomes `rings`. Working links are kept and still work. It refuses to write into a folder that already exists, and it never changes the original. I decide later whether Kieran ever gets the folder. The tool just makes it possible to say 'here, no dead ends'. Rings keeps shouting in my own folder.",
+   "test": "Run --copy-to on testnotes/ into a new folder, then run the checker on that new folder: it reports 0 dead links. Open Rings in the copy: the word 'Family' is still there, no brackets. Open Rings in the original: the link is untouched and still on the list. Run it again with the same target folder: it stops with one plain line saying the folder already exists, and nothing is overwritten. The number of notes in both folders is the same.",
+   "came_from": "Day 55 onwards, Marta and 'Thursday, Kieran' with me not answering. My worry is that if I hand him the folder with dead ends he will think I don't know my trade. And from the Rings note, whose Family link will be on the list every time. A copy lets me hand over something clean without giving up my own list, and without deciding yet.",
+   "status": "taken",
+   "label": "I6",
+   "req": "req-25"
+  },
+  {
+   "text": "A 'waiting on purpose' list, like a .gitignore. If the notes folder holds a plain file called .waiting, with one missing note name per line (say Family), then dead links to those names are not counted as dead. They print in their own short block after the count: 'Waiting on purpose: Family: 3 links, in Rings.md, ...'. The count line says it in words: '2 dead link(s), 3 waiting.' It stays honest both ways. Only 'no such note' links can be waited on, never a heading miss. A name in .waiting that now exists as a note is called out at once: 'Family is on the waiting list but the note exists now, take it off.' A name in .waiting that no link points to is called out too, so the list can't go stale and hide something. The line count and the list are all in the one file. The .waiting file is copied by --copy-to like any other file, so Kieran sees it, and it is never treated as a note.",
+   "test": "Put Family in .waiting where Rings.md links [[Family]]. Run: Family moves from the dead lines to the Waiting block, and the count drops by its links and says 'waiting'. Add Family.md and run again: I am told to take it off the list. Add a made-up name to .waiting that nothing links to: it is called out. Delete .waiting: Family is back among the dead ones and the count is as before. Try 'Rings#nowhere' style heading misses in .waiting: still reported dead.",
+   "came_from": "Day 61 and the intro: Rings links to a family note that doesn't exist yet and will shout on every run. I said I'd let it, but before I hand Kieran a folder I want the shouting to be my choice, written down, and to show in plain words that it is on purpose rather than forgotten.",
+   "status": "declined",
+   "label": "I7",
+   "why": "I said I'd let Rings shout on every run, and req-02 says no ignore list. A list of names to stay quiet about is one more file to keep and one more way to hide something. Kieran's copy already turns dead links into plain words, so the shouting stays in my folder."
+  },
+  {
+   "text": "A last line that proves it actually read everything: 'Read 298 notes, 1,204 links (211 note links, 940 web/email, 53 in code blocks skipped); 2 notes not opened.' It comes after everything else, on every run, even a clean one. The note count is every .md file under the folder, so I can set it beside what the machine's own file count says. A clean run of 0 dead links can't look the same as a run that read nothing.",
+   "test": "Run on testnotes/: the note count equals the .md files found by hand (ls -R | grep -c '.md'). Add a note holding only a fenced block with a link inside: the 'in code blocks skipped' figure goes up by one and no dead link appears. Break a shortcut named X.md: 'not opened' says 1. Run on an empty folder: it says 'Read 0 notes' and does not print '0 dead link(s)' alone as if all was well.",
+   "came_from": "Day 66: 'three backticks on one line and the rest of a note vanishes. Same as the insurer's letters, saying nothing.' The tool going quiet is what I fear most. I want a number I can check with my own eyes against the folder.",
+   "status": "taken",
+   "label": "I8",
+   "req": "req-26"
+  }
+ ],
+ "constraints_changed": [
+  {
+   "constraint": "The tool reads files and writes only to stdout. [product]",
+   "now": "The tool reads files and writes to stdout. Only when asked with --print may it also write one file, print.txt, next to the notes folder and never inside it. It never writes anything else.",
+   "why": "I want to print the notes with the dead links marked in the text and read them on the bus to Devonport. A list of file:line:column is no use on paper.",
+   "turn": 9
+  },
+  {
+   "constraint": "The tool reads files and writes to stdout. Only when asked with --print may it also write one file, print.txt, next to the notes folder and never inside it. It never writes anything else.",
+   "now": "The tool reads files and writes to stdout. With --print it may also write print.txt next to the notes folder, never inside it. With --copy-to it may also create one new folder that did not exist before, never inside the notes folder, holding a copy of the notes with dead links turned into plain words. It never writes anything else, and never changes the original notes.",
+   "why": "I want to hand Kieran a clean copy without giving up my own list of dead links, so Rings can keep shouting in my folder and not in his.",
+   "turn": 10
+  }
+ ],
+ "escalations": [
+  {
+   "turn": 9,
+   "question": "Please put a copy of my real notes in a folder called realcopy/ inside the project, so the tool can be run on it. I haven't seen it run there yet."
+  }
+ ],
+ "ways": [
+  "The tool stays one file that I can read top to bottom at the kitchen table. Each turn the builder gives me the line count before and after. If it has grown by more than I can read in one sitting, it simplifies first or the change is dropped.",
+  "It never changes, renames, moves or creates anything inside my notes folder, and leaves no hidden files. It writes only to the screen, to print.txt beside the folder with --print, or to one new copy folder with --copy-to. If that folder already exists it stops and says so. It never overwrites.",
+  "Right both ways, and shown. Before the builder says anything works, it runs the tool on small test notes with known good and known dead links, covering renames, folders, the same name in two folders, capitals and spaces. It breaks a good link on purpose and shows the tool catching it. It reruns every old test each turn. It says which tests it actually ran and which it did not. If it can't run something, it says so and doesn't claim it.",
+  "When the tool can't tell whether a link is good, it says so on its own line and doesn't guess. Every dead link is shown as file, line and the words of the link, in plain English. 'Run it' is all it takes. Rings stays on the list every run, and there is no ignore list.",
+  "Two new requirements a turn at most, and both of us count them out loud. A third goes on the 'later' pile and I don't argue. Before I add anything, I run the last thing on my real folder. Nothing new is built for Kieran, or anything else, until I've used the tool once for real and looked at what it said.",
+  "The builder opens each turn with three short lines: what is built, what is waiting, and what it isn't sure of. When I ask why, it answers in a sentence or two. If it can't, the code gets simpler.",
+  "For myself: on a weekday evening after my eggs I read the real output in full, not a glance. I check that Rings is on the list and that one link I know is good is not. Saturday is the allotment and Sunday afternoon is Nula's call, so I don't fiddle with this then. If I catch myself adding things just to keep my hands busy, I stop."
+ ],
+ "notes_for_the_human": [
+  "I can't find anything wrong with the charter. Nothing in it has got in my way so far, and I have changed no constraints.",
+  "The question of whether Kieran gets the folder is mine, and it isn't for the tool to settle. The tool only has to tell me true things about which links are dead. I don't want it to grow into something that decides what goes to Kieran, or into something that tidies for me.",
+  "I'll take the printed notes to Devonport on the bus, and Nula's answer to which notes are wrong will matter more than anything the tool reports. If the tool starts to look like it's for anything other than that, I'll stop adding to it.",
+  "Nothing in the charter is wrong that I can see. The 'one file' constraint is holding and I've had no reason to change it. I changed no limits and I'm not asking to.",
+  "The charter's aim is a tool that is right both ways. Zero failed checks in eight turns tells me little. If the harness could run a set of deliberately awkward notes, and not only what the builder makes up, I'd trust the count more.",
+  "The Kieran question (whether to hand over the folder) is not something the tool decides, and I haven't asked it to. I'm keeping it off the requirements list on purpose. The Rings link will keep showing as dead and I'm leaving it.",
+  "The charter's starting limit, 'writes only to stdout', was changed twice in two turns (--print, then --copy-to). Both had a plain reason, but the constraint was probably written too tight for someone who wants to take notes on a bus. You may want to say from the start that reading is the default and a few named writes beside the notes folder are allowed.",
+  "I can't tell from here whether the REFUSALS or RESERVED decisions cover handing the notes to a colleague. Whether Kieran gets the folder, and whether I train him, is mine and Marta's to settle, not the tool's. I have not settled it. If it is a reserved decision, it is waiting with you, and the copy feature does not answer it.",
+  "The count of 25 requirements in 10 turns against a rule of two a turn suggests the rule needs something with teeth. I've made the builder responsible for counting. If that also fails, the fault is in the setup, not just in me.",
+  "The starting limit that the tool writes only to stdout was wrong for me. A list of file and line numbers is no use on a bus to Devonport. I changed it twice, once for print.txt and once for the copy folder, and I kept both very narrow: never inside my notes, never overwriting.",
+  "The turn limit on new requirements didn't hold in the first six turns, because the only thing enforcing it was my own promise. If the charter can have something count and refuse a third requirement in a turn, I'd like that. It would spare me from having to say no to myself.",
+  "Whether Kieran gets the notes is not a software question, and I haven't settled it. The copy feature makes it easy to hand them over before I've decided. I would like it to stay a thing I choose to run and never a thing the tool nudges me toward."
+ ],
+ "memory": "Eric developed a link checker tool across multiple rounds. Early versions handled Polish characters, broken shortcuts, and path resolution issues. By round nine, it tracked missing notes and their references, orphaned files, and code blocks, though code block validation was initially incomplete. Round ten streamlined the code, fixed file handling, and added a copy-to feature that creates fresh note copies while resolving shortcuts but leaving broken links unchanged.\n\nRound eleven added a progress line printed at the end of every run showing how many notes were read, plus usage text naming the --print and --copy-to flags. This required adjusting test expectations, but all tests passed. The code grew to 559 lines.\n\nRound twelve involved reviewing the implementation to confirm the copy operation works correctly—refusing when targets exist or fall inside the notes folder, never modifying source files, and always printing its confirmation line.\n\nStill pending: testing against real notes to verify whether the reported dead links are genuine issues, and clarifying what happens if a copy operation fails partway through, potentially leaving an incomplete folder.",
+ "project": "/private/tmp/regent-projects/links-3"
+}

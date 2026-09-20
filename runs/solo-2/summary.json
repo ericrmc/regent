@@ -1,0 +1,341 @@
+{
+ "turns": 14,
+ "wall_min": 22.3,
+ "claude_min": 13.9,
+ "regent_blocking_min": 7.0,
+ "claude_share": 0.62,
+ "cost_claude": 14.83,
+ "cost_regent": 0.84,
+ "check_ok": true,
+ "counts": {
+  "direct": 11,
+  "challenge": 10,
+  "constrain": 11,
+  "dreams": 5,
+  "step_backs": 2
+ },
+ "requirements": [
+  {
+   "id": "req-01",
+   "status": "built",
+   "turn": 1,
+   "from_dream": false,
+   "text": "I run it with just a folder name. It prints each dead link on its own line as file, line number, and the link as written. It exits with an error code if any are dead and cleanly if none are.",
+   "test": "Run it on the test folder and see one line per dead link with file and line. Run it on a folder with no dead links and see nothing dead listed and a clean exit.",
+   "idea": ""
+  },
+  {
+   "id": "req-02",
+   "status": "built",
+   "turn": 1,
+   "from_dream": false,
+   "text": "At the end it prints one summary line: how many links it checked, how many were good, how many were dead.",
+   "test": "On the test folder the three numbers add up and match the count from the plain list of intended bad links.",
+   "idea": ""
+  },
+  {
+   "id": "req-03",
+   "status": "built",
+   "turn": 1,
+   "from_dream": false,
+   "text": "Links keep working after I move notes into folders. A link from a note in one folder to a note in another, or in a subfolder, is judged by where the file really is. A link to a note that has been renamed or moved away is reported.",
+   "test": "Test folder has notes in nested folders, some linking across them correctly and some to old names. The good ones are not listed and the old-name ones are.",
+   "idea": ""
+  },
+  {
+   "id": "req-04",
+   "status": "built",
+   "turn": 1,
+   "from_dream": false,
+   "text": "A link to a heading inside a note is checked against the real headings in that note. If I've renamed the heading, the link is reported. If the note exists but the heading doesn't, the line says so, separate from a missing note.",
+   "test": "Test folder has one good heading link and one to a renamed heading. Only the renamed one is reported, and the line says the heading is missing, not the file.",
+   "idea": ""
+  },
+  {
+   "id": "req-05",
+   "status": "built",
+   "turn": 1,
+   "from_dream": false,
+   "text": "Ordinary web addresses and email links are ignored and not counted as dead. It does not touch the network.",
+   "test": "Test folder contains an https link and a mailto link. Neither appears in the dead list.",
+   "idea": ""
+  },
+  {
+   "id": "req-06",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "If a link is dead only because of capital letters (I wrote 'see shoes', the note is Shoes.md), the line says so and names the note it thinks I meant. It is still counted as dead.",
+   "test": "In the test folder a link 'see shoes' beside a Shoes.md prints a dead line saying it differs only in capitals from Shoes, and a genuinely missing note prints no such hint.",
+   "idea": ""
+  },
+  {
+   "id": "req-07",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "If a file can't be read (odd characters, bad bytes), it names that file on its own line, carries on with the rest, and does not count its links as good. The exit code is still an error.",
+   "test": "Put one file with a bad byte in the test folder. The run finishes, the file is named, the other links are still checked, exit is 1.",
+   "idea": ""
+  },
+  {
+   "id": "req-08",
+   "status": "built",
+   "turn": 2,
+   "from_dream": false,
+   "text": "A link to a heading with several words, like 'see Shoes#Sizing Chart', is judged correctly, good when the heading '## Sizing Chart' exists and dead with the heading message when it doesn't.",
+   "test": "The test folder has one good and one bad multi-word heading link. The bad one shows up as 'heading not found', the good one is not listed.",
+   "idea": ""
+  },
+  {
+   "id": "req-09",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "The test folder has a note called Rings that links to a Family note that doesn't exist. That link shows up in the dead list every time I run it.",
+   "test": "Run on the test folder and see a line for Rings.md naming the Family link as dead, and it is counted in the dead total.",
+   "idea": ""
+  },
+  {
+   "id": "req-10",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "If two notes in different folders have the same name and a link points to that name, it is listed as UNSURE naming both files. It is not called good or dead.",
+   "test": "Test folder has two Shoes-style notes; output shows one UNSURE line naming both paths, and the exit code is unchanged by it.",
+   "idea": ""
+  },
+  {
+   "id": "req-11",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "A link written inside a code block (fenced with three backticks) is ignored: not listed, not counted.",
+   "test": "A note in the test folder has a dead-looking link inside a fenced block; it does not appear in the output and the checked total does not include it.",
+   "idea": ""
+  },
+  {
+   "id": "req-12",
+   "status": "built",
+   "turn": 3,
+   "from_dream": false,
+   "text": "Running the tool or its tests leaves no __pycache__ or other stray files in the folder, and the tests print no warnings.",
+   "test": "After running the check, ls shows only the tool, its tests, the test folders and the bad list; the test run shows no ResourceWarning.",
+   "idea": ""
+  },
+  {
+   "id": "req-13",
+   "status": "built",
+   "turn": 4,
+   "from_dream": false,
+   "text": "A dead link's line shows the whole link as I wrote it, brackets and all, not a chopped piece of it.",
+   "test": "In the test folder, the line for calls/First Call.md:4 shows [text](../projects/Roadmap.md) with the opening bracket, not starting at ']('.",
+   "idea": ""
+  },
+  {
+   "id": "req-14",
+   "status": "built",
+   "turn": 4,
+   "from_dream": true,
+   "text": "After the dead list, a short 'wanted' list: each missing note name once, with how many links point at it and where (file:line). Same every run, no options, and it doesn't change the counts or the exit code.",
+   "test": "Add a second link to 'Old Boots' from another note. Under the dead lines I see 'Old Boots: 2 links' with both file:line places, and 'Family: 1 link (Rings.md:2)'. The Checked/good/dead numbers on the summary line are the same as before.",
+   "idea": "I1"
+  },
+  {
+   "id": "req-15",
+   "status": "built",
+   "turn": 4,
+   "from_dream": true,
+   "text": "A dead link gets the same 'did you mean' hint the capitals one has when the only difference is spaces, underscores or hyphens. It is still counted dead. If more than one note fits, it names none.",
+   "test": "Put 'see First_Call' and 'see First-Call' in a note where 'First Call.md' exists. Both are listed dead, each saying it differs only in spaces/underscores/hyphens from First Call. 'see Zzz Nothing' has no hint. Nothing that was good turns dead or the other way round.",
+   "idea": "I2"
+  },
+  {
+   "id": "req-16",
+   "status": "built",
+   "turn": 7,
+   "from_dream": false,
+   "text": "A line starting with # inside a fenced code block (three backticks) is not treated as a heading. A link to a heading that only exists inside a code block is reported dead with the heading-missing message.",
+   "test": "The test folder has a note whose only 'Sizing' heading is inside a code fence, and another note linking to it. That link appears in the dead list with the heading message, and a unit test covers it.",
+   "idea": ""
+  },
+  {
+   "id": "req-17",
+   "status": "built",
+   "turn": 9,
+   "from_dream": false,
+   "text": "The wanted list holds only notes that are really missing. A dead link that already gets a 'did you mean' hint (capitals, spaces, underscores, hyphens) is left off it. The counts and exit code don't change.",
+   "test": "On test-notes, 'shoes', 'First-Call' and 'First_Call' no longer appear in the wanted list. 'Family' and 'Gone Note' still do. The summary line is the same as before.",
+   "idea": ""
+  },
+  {
+   "id": "req-18",
+   "status": "built",
+   "turn": 9,
+   "from_dream": true,
+   "text": "If I type the word 'good' after the folder name, it also prints every good link as file, line, the link as written, and the file it landed on (e.g. 'Home.md:4: see Shoes -> footwear/Shoes.md'). Without the word, the output is exactly as now. The counts and exit code are the same either way.",
+   "test": "Run test-notes with and without 'good'. With it there are 9 extra lines, matching '9 good' in the summary. The dead and UNSURE lines and the last line are unchanged. I open the file named on three of them and it is the note I meant.",
+   "idea": "I4"
+  },
+  {
+   "id": "req-19",
+   "status": "built",
+   "turn": 10,
+   "from_dream": true,
+   "text": "If a line ends with the words (not a link), the tool skips that line: it is not listed, not checked, and not in the wanted list. The summary line gets a fourth number, 'skipped', only when at least one line was skipped, so good + dead + UNSURE + skipped adds up to what it looked at. When nothing is skipped, the summary reads exactly as it does now.",
+   "test": "In the test folder, add '(not a link)' to the end of the 'See Nula's' line in Home.md and the 'See Table 3.' line in Errands.md. Run it: neither line appears anywhere, Table 3 is gone from the wanted list, the summary says 2 skipped, and the numbers add up. Rings -> Family still shows. Take the words off and both lines come back and the summary has no 'skipped'.",
+   "idea": "I7"
+  },
+  {
+   "id": "req-20",
+   "status": "built",
+   "turn": 10,
+   "from_dream": true,
+   "text": "Under each dead or UNSURE line, the whole line of the note the link sits on is shown, indented a few spaces, exactly as written. The file:line and link-as-written line stays as it is. Good links, the wanted list and the summary are not affected.",
+   "test": "Run it on the test folder. Under 'Rings.md:2' the full text of line 2 of Rings.md appears, indented. A dead link in the middle of a long sentence shows the whole sentence. Counts, exit code and the wanted list are the same as before.",
+   "idea": "I8"
+  },
+  {
+   "id": "req-21",
+   "status": "built",
+   "turn": 13,
+   "from_dream": true,
+   "text": "If I give it a folder that isn't there, or a folder with no notes in it, it says so plainly in one line naming the folder, and does not print a summary line. It exits with code 2, different from code 1 for dead links. No traceback either way.",
+   "test": "Run on a misspelled folder name: one plain line naming what I typed, no Python error text, no summary line, exit code 2. Run on an empty folder and on a folder holding only a .txt file: a line saying no notes were found there, exit code 2. Run on test-notes: exit code still 1. Run on clean-notes: still 0 with the same summary.",
+   "idea": "I10"
+  },
+  {
+   "id": "req-22",
+   "status": "built",
+   "turn": 13,
+   "from_dream": true,
+   "text": "Notes saved a different way are judged the same. A note with Windows line endings, or a hidden mark at the very start of the file, or headings with trailing spaces or a closing row of hashes like '## Sizing Chart ##', has its headings found normally. A link to the heading on the first line of such a note is not reported as heading-missing.",
+   "test": "Add three small notes to the test folder: one with Windows line endings, one with the hidden start-of-file mark and a heading on line 1, one with '## Sizing Chart   ' and '## Sizing Chart ##'. Links like 'see Shoes#Sizing Chart' to each come out good. Dead links in those files show the link and the sentence with no stray return character or odd symbol at the end. Counts add up as before and the test folder still shows Rings -> Family.",
+   "idea": "I11"
+  }
+ ],
+ "ideas": [
+  {
+   "text": "After the dead list, a short 'wanted' list: each missing note name once, with how many links point at it and where (file:line). Family would show 'Family: 1 link (Rings.md:9)'. A name several notes want reads differently from a one-off. Same list every run, no options, and it doesn't change the counts or the exit code.",
+   "test": "In the test folder, add a second link to 'Old Boots' from another note. Run it. Under the dead lines I see 'Old Boots: 2 links' with both file:line places, and 'Family: 1 link' from Rings. The good/dead counts on the summary line are the same as before.",
+   "came_from": "Rings links to a Family note that doesn't exist yet and I said I'd leave it shouting. After the tidy-up I can't tell which dead links are a note I never wrote and which are a note I renamed. If three notes all want 'Old Boots', it was renamed. If one wants 'Family', I haven't written it.",
+   "status": "built",
+   "label": "I1",
+   "req": "req-14"
+  },
+  {
+   "text": "A dead link gets the same 'did you mean' line the capitals one has when the only difference is spaces, underscores or hyphens. 'see First_Call' or 'see First-Call' where the note is 'First Call.md' says so and names the note. Still counted dead. If more than one note fits, it names none and says nothing extra.",
+   "test": "Put 'see First_Call' and 'see First-Call' in a note where 'First Call.md' exists. Both are listed as dead, each saying it differs only in spaces/underscores/hyphens from First Call. A link to 'Zzz Nothing' has no hint. Nothing that was good before turns dead or the other way round.",
+   "came_from": "The tidy-up: I renamed things and merged a few. Some notes went from underscores to spaces or the other way, and I can't remember which. Dead links are useful, but 'you meant this one' saves me opening folders with a sore neck.",
+   "status": "built",
+   "label": "I2",
+   "req": "req-15"
+  },
+  {
+   "text": "A second list at the very end, kept apart from the dead lines: notes that no other note links to. Marked plainly as 'nothing links to these'. It is not dead, not counted in the summary, and doesn't change the exit code. Home is left out.",
+   "test": "Test folder has one note nothing points to. It appears under 'nothing links to these' and no other notes do. Add a link to it from Home and run again: it's gone from the list. The exit code and 'Checked N links' line don't move.",
+   "came_from": "Kieran, and printing the folder for Nula on the bus. If I hand it over, I want to know which notes are sat there with no way in, like the brass key with red tape that nobody knows. After a merge I'd like to see what got left stranded.",
+   "status": "declined",
+   "label": "I3",
+   "why": "Not now. It is another list to read and I'm afraid this turns into a job. What to do with Kieran I haven't decided. Ask me again after the dead links are right."
+  },
+  {
+   "text": "Let me see the good links as well. If I type the word 'good' after the folder name, it prints every good link as file, line, the link as written, and which file it actually landed on (e.g. 'Home.md:4: see Shoes -> footwear/Shoes.md'). Without the word, the output is exactly what it is now. The counts and exit code don't change either way. That is the only extra word it takes.",
+   "test": "Run it on test-notes with and without 'good'. With it, I count the new lines and there are 9, matching '9 good' in the summary. The dead and UNSURE lines and the last line are the same as before. Then I take three of the good lines and open the named file to see it is the note I meant.",
+   "came_from": "Day 46: 'Looks straight. Wanted to see the good ones too.' I'm taking the printout to Devonport for Nula to mark. She can't tell me which are wrong from a list of only the dead ones.",
+   "status": "built",
+   "label": "I4",
+   "req": "req-18"
+  },
+  {
+   "text": "A link to a heading that is dead only because of capitals gets the same 'did you mean' line the note-name case gets. If I wrote 'see Shoes#sizing chart' and the heading is '## Sizing Chart', the line says so and gives the heading as written in the note. It is still counted dead. If two headings in that note fit, it names none.",
+   "test": "Add to the test folder a link 'see Shoes#sizing chart' where Shoes.md has '## Sizing Chart'. The run lists it as dead with the heading message and a hint naming 'Sizing Chart'. The dead count goes up by one and the summary still adds up. A link to a heading that is wrong by more than capitals gets no hint.",
+   "came_from": "Day 42, Row F at the yew churchyard: the card said F, the plan had been renumbered in 1998 and nobody told the office. A heading I renamed in the tidy-up is the same trap. It looks nearly right and is quietly wrong.",
+   "status": "declined",
+   "label": "I5",
+   "why": "Heading-with-wrong-capitals hint is nice, but I have six things still unproved. Ask me again once those are shown working."
+  },
+  {
+   "text": "If a link matches a folder name and not a note, the line says 'that is a folder, not a note' rather than plain 'no such note'. It is still counted dead. If the folder has a note of the same name inside it (projects/2024/2024.md), it names it as the likely one.",
+   "test": "Test folder has 'archive/' and a link 'see archive'. The run lists it dead with the folder message. A link 'see nonsense' still gets the ordinary dead line. The dead count and exit code are unchanged from what they'd be without the message.",
+   "came_from": "Day 12 April, the delivery driver at the gate wanting Voisey Joinery. It's a real place, but it's Devonport, not here. After I moved half the notes into folders, a link may name something that exists but isn't a note.",
+   "status": "declined",
+   "label": "I6",
+   "why": "A link naming a folder is rare in my notes. Plain 'no such note' is good enough, and I don't want more messages to learn."
+  },
+  {
+   "text": "A way to tell it a line is not a link. If I put the words (not a link) at the end of a line, the tool skips that line. It is not listed and not checked. The summary line gets a fourth number, 'skipped', so good + dead + UNSURE + skipped still adds up to what it looked at. That way 'See Table 3.' or 'See Nula's' can be silenced once, in the note, and the list only shows things that need me.",
+   "test": "In the test folder, add '(not a link)' to the end of the 'See Nula's' line in Home.md and to the 'See Table 3.' line in Errands.md. Run it. Neither line appears anywhere, Table 3 is gone from the wanted list, the summary shows 2 skipped, and the other numbers add up. Rings -> Family still shows. Take the words off and both lines come back.",
+   "came_from": "Days 43-55: 'See Table 3.' keeps showing as dead and 'See Nula's' keeps coming up as UNSURE. I told the builder about the Table 3 thing three times. If a false one shouts every time I will stop believing the list, like the insurer's letters. Rings is meant to shout. Those two are not.",
+   "status": "built",
+   "label": "I7",
+   "req": "req-19"
+  },
+  {
+   "text": "Under each dead or UNSURE line, show the whole sentence the link sits in, indented, exactly as written in the note. The file:line and link-as-written line stays as it is. Good links are not affected.",
+   "test": "Run it on the test folder. Under 'Rings.md:2' the full text of line 2 of Rings.md appears, indented by a few spaces. A dead link in the middle of a long sentence shows the whole sentence. Counts, exit code and the wanted list are unchanged.",
+   "came_from": "Days 42 and 47: I want to print the notes and take them to Devonport on the bus and ask Nula which ones are wrong. A list that says 'Rings.md:2: see Family' means nothing on paper without the sentence around it. She won't remember the note, she'll remember what she said.",
+   "status": "built",
+   "label": "I8",
+   "req": "req-20"
+  },
+  {
+   "text": "A short list of notes with a heading and nothing under it. Kept apart from the dead lines, marked 'nothing written yet'. Not dead, not counted in the summary, no change to the exit code. A note with only blank lines or only a heading line counts as empty.",
+   "test": "Add a note to the test folder with just '# Widows' and nothing else. It shows in the list at the very end. A note with a heading and one line of text does not. Home.md and the others don't show. The summary and exit code are the same as before the empty note was added, apart from any links in it.",
+   "came_from": "Day 42: Row F was renumbered in 1998 and nobody told the office. Nula's notes only help if there is something in them. Rings points at a Family note that doesn't exist. I'd like to see the notes I started and never finished before Kieran opens the folder and thinks I don't know my own trade.",
+   "status": "declined",
+   "label": "I9",
+   "why": "Not now. Turns are running short, and a list of empty notes is a separate job from checking links. I want the two false alarms gone first."
+  },
+  {
+   "text": "If I give it a folder that isn't there, or a folder with no notes in it, it says so plainly in one line, naming the folder, and does not print 'Checked 0 links: 0 good, 0 dead'. It exits with a different error code from the one for dead links, so 'I typed it wrong' and 'you have dead links' are never the same answer. No traceback either way.",
+   "test": "Run it on a folder name I misspell: one plain line naming what I typed, no Python error text, no summary line, exit code 2. Run it on an empty folder and on a folder holding only a .txt file: a line saying no notes were found there, exit code 2. Run it on test-notes: exit code is still 1 as now. Run it on clean-notes: still 0 and the same summary.",
+   "came_from": "Day 53: 'told the builder it did nothing last time.' A tool that prints a tidy zero when I've pointed it at the wrong place is the same as one that did nothing. I'd read '0 dead' as good news.",
+   "status": "built",
+   "label": "I10",
+   "req": "req-21"
+  },
+  {
+   "text": "Notes saved a different way still get judged the same. A note with Windows line endings, or a hidden mark at the very start of the file, or headings with trailing spaces (or a closing row of hashes like '## Sizing Chart ##'), has its headings found normally. A link to the heading on the first line of such a note is not reported as heading-missing.",
+   "test": "Add three small notes to the test folder: one saved with Windows line endings, one with the hidden start-of-file mark and a heading on line 1, one with '## Sizing Chart   ' and '## Sizing Chart ##'. Links like 'see Shoes#Sizing Chart' to each come out good. Dead links in those files show the link and the sentence without a stray return character or odd symbol at the end of the line. Counts add up as before, and the test folder still shows Rings -> Family.",
+   "came_from": "Day 55/56: I keep asking about 'the Table 3 thing' and saying no to a guess. What I fear is the tool being wrong about a good link. Some of my notes came over from another machine and I can't see how they were saved, so I can't tell by eye if a wrong 'heading missing' is me or the file.",
+   "status": "built",
+   "label": "I11",
+   "req": "req-22"
+  },
+  {
+   "text": "A link that used to work and now points to the wrong place gets a 'moved' hint. If the link is written with a path (like ../projects/Roadmap.md) and no such file is there, but exactly one note with that same file name exists somewhere else in the folder, the line says 'a note called Roadmap.md is at projects/2024/Roadmap.md' and names it. Exact file name only, no guessing at spellings. It is still counted dead. If two notes share the name, it names none. Same as the other hints, a link that gets this hint is left off the wanted list, and the counts and exit code don't change.",
+   "test": "In the test folder, calls/First Call.md links to ../projects/Roadmap.md, and Roadmap.md really sits in projects/2024/. Run it. That dead line should say the note is at projects/2024/Roadmap.md, the total dead count should be unchanged, and ../projects/Roadmap.md should be gone from the wanted list. Then copy Roadmap.md into a second folder. The hint should disappear and the link should go back to plain dead. No hint should appear on Rings.md's Family link.",
+   "came_from": "Day 58 and day 59. I tidied last month and moved half the notes into folders. Wanted currently shows ../projects/Roadmap.md as if the note never existed, but I know it does exist, just moved. On day 55 the Table 3 thing came up again and I asked the builder about it. Before Kieran gets the folder I want to fix the moved ones in a minute, not hunt for them.",
+   "status": "declined",
+   "label": "I12",
+   "why": "I'd like it, but this is the last turn and I couldn't see it work on Roadmap and on two copies. The wanted list already names ../projects/Roadmap.md and I know where the note sits, so I'll fix that link by hand."
+  },
+  {
+   "text": "One more word after the folder name: 'print'. It writes a single plain text file called for-nula.txt in the folder I ran it from (not in the notes folder), containing every note one after another. Each note starts with its folder path and file name on a line by itself, and there is a page-break line between notes. Any line holding a dead or UNSURE link has '   <<< DEAD' or '   <<< UNSURE' added at the end, so it can be circled with a pen. The notes themselves are not changed. Without the word, nothing is written anywhere and the output is exactly as now. If the file already exists it is replaced, and the screen says in one line that it was written and how many notes are in it.",
+   "test": "Run it on test-notes with 'print'. for-nula.txt should appear next to where I ran it, with Rings.md near the top or in order, and the Family line marked '<<< DEAD'. Count the marks: the number of DEAD plus UNSURE marks should equal the dead and UNSURE numbers in the summary. Open one note in the folder: it is unchanged. Run without the word: no for-nula.txt is created and the output matches now. Run print twice: still one file, not two, and no pycache.",
+   "came_from": "Day 58: 'Print the notes tomorrow.' Day 59: 'Tomorrow print the notes. Sunday.' I'm taking the notes to Devonport on the 34 bus to ask Nula which ones are wrong, and I want the dead links marked on the page so I'm not holding the screen list and 300 notes side by side on my knee. The Rings link should show in ink.",
+   "status": "declined",
+   "label": "I13",
+   "why": "It writes a file, and the charter says the tool only writes to stdout. I can't loosen that. I'll print the notes myself, and use the dead list (file and line) to circle the bad ones with a pen."
+  }
+ ],
+ "ways": [
+  "Prove before you say. Before you tell me something works, run it on a small set of test notes where we know which links are dead and which are good. Show me the output beside the expected answer, line by line. I don't say done on your word, and I won't say it while any of the earlier proofs are unshown.",
+  "Right both ways is the whole job. Every miss and every false alarm gets a test note that would have caught it. Keep all the test notes. When you change how links are matched, run every earlier case again and tell me plainly if any answer changed.",
+  "Read the whole thing wherever a link is judged good or dead. For that part, read the actual notes and the code, not a skim. Say plainly what you did not read. I will do the same and not skim what I am asked to check.",
+  "One requirement at a time, and two per turn at most. If I ask for more, say so and ask me which comes first. Do the proof of what is already built before you take a new one, and start each turn with what is still unproved.",
+  "Keep it one file that I can read from top to bottom, with no setup and no options to learn. The only output is file, line and the dead link. Nothing gets written except to the screen. If a change would break any of that, say so before you do it.",
+  "Don't build ideas I haven't said yes to. Offer one idea at most per turn, in one sentence, and only after the thing in hand is proved. If I say ask me again later, keep it in one line and bring it up only when I have said the work in hand is proved.",
+  "Keep replies short and in plain words. Say what changed, what you ran, and what I should look at. Tell me how many turns are left when it is five or fewer, and keep the last turns for proving and not for building. If you don't know, say so."
+ ],
+ "notes_for_the_human": [
+  "The counts show 20 requirements in 12 turns and 4 ideas I turned down for being extra. It might be worth the charter having a way to stop new requirements while earlier ones are still unproved. I've done it as a way of working here, but the charter doesn't seem to say it.",
+  "The harness says my time was 5.2 minutes and Claude's was 11.9. Ways of working can't change how long I spend, so I can't tell whether that matches a man with a Saturday and an allotment. Someone should check that the tool isn't quietly asking for more of my time than I said I'd give.",
+  "I think the limit of two requirements per turn was never enforced. Claude built 5 in the first turn without objecting. If that limit is meant to bind the builder, it should be something the harness counts and not something I have to remember.",
+  "The charter says the tool writes only to stdout. I wanted 'print' and had to turn it down. I think that is right for now, since it keeps the tool safe to run after a tidy-up. It might be worth a way to let me ask for a file on purpose, but I am not asking for it and I don't want it loosened.",
+  "I was not told how many turns were left until near the end. That pushed proof of the two false alarms and the other unproved cases to the last turns. It would help to show me the turn count from the start.",
+  "The 'one file, no setup' rule and the test notes pull against each other. I want the tool as one readable file, and I want the tests kept somewhere else as plain notes. The charter should say clearly that this is allowed, so it doesn't look like an extra thing I have to learn."
+ ],
+ "project": "/private/tmp/regent-projects/links-solo2"
+}

@@ -1,0 +1,19 @@
+{
+  "bold": -0.4,
+  "curious": -0.1,
+  "patient": 0.4,
+  "trusting": 0.2,
+  "thorough": 0.4,
+  "stubborn": 0.4,
+  "restless": -0.3,
+  "pinned": [],
+  "reasons": {
+    "bold": "Avoids large confrontations and doesn't seek advancement, but impulsively swims in cold water.",
+    "curious": "Constantly observes small details and counts grave markers himself rather than trusting the record.",
+    "patient": "Tolerates broken machine for 'week before' and unresolved car insurance for months without pushing back.",
+    "trusting": "Doesn't demand explanations or money back; 'better than most conversations' with a stranger.",
+    "thorough": "'always look at the shoes'; notices the seal cracks 'pencil-wide'; counts grave markers himself.",
+    "stubborn": "'stopped correcting people' about his name and accepts setbacks without digging in.",
+    "restless": "Same job 30 years, wakes '5:40 without an alarm,' finds satisfaction in small routines."
+  }
+}
