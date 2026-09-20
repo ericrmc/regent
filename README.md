@@ -92,6 +92,23 @@ regent journal piotr-mahon --last 10
 `say` is from you and he knows it. `plant` is something he comes across, and he
 never learns it was you.
 
+## Watch
+
+```
+regent run --project ~/code/thing --watch     # opens the page as the run starts
+regent watch                                  # the newest run, at http://127.0.0.1:8642
+regent watch thing                            # the newest run of that project
+regent watch thing --export thing.html        # one file with the run inside it
+```
+
+One page, `watch.html`, read straight from the run's ledger every three
+seconds: what is happening now and the builder's tool uses as they land, each
+day with what he wrote and what came back, each night with the spoon cycle laid
+out (motifs, both drift passes, every link caught, what Sift kept and what he
+did with it), his mood, the time he gave, requirements asked and built, the
+project's lines by commit, and the spend. `--export` writes the same page as a
+single file that needs no server.
+
 ## Where things live
 
 ```

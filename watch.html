@@ -1,0 +1,386 @@
+<title>Regent Daybook</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Spectral:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+:root{
+  --bg:#ECEEF1;--surface:#F9FAFB;--sunk:#E1E5EA;--ink:#1A2230;--ink2:#465062;--muted:#6C7686;--rule:#D3D8DF;
+  --night:#1C2140;--night-2:#262C55;--night-ink:#E6E8F6;--night-muted:#A3A9CF;--night-rule:#383F72;
+  --brass:#94661A;--brass-soft:#F1E6D0;--brass-night:#E0B464;
+  --builder:#1F6F8B;--builder-soft:#DCEBF1;
+  --good:#2C7A4E;--good-bg:#DDEFE4;--crit:#B33A2C;--crit-bg:#F7E0DC;--wait:#6C7686;--wait-bg:#E1E5EA;
+  --serif:"Spectral",Georgia,"Times New Roman",serif;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10141B;--surface:#171C25;--sunk:#1E2430;--ink:#E6EAF0;--ink2:#B4BCC9;--muted:#838D9C;--rule:#2A313D;
+  --night:#0A0C1D;--night-2:#151937;--night-ink:#E6E8F6;--night-muted:#959BC4;--night-rule:#2B3060;
+  --brass:#D9A94F;--brass-soft:#2E2718;--brass-night:#E0B464;
+  --builder:#62B6D1;--builder-soft:#16272E;
+  --good:#6CC592;--good-bg:#182A20;--crit:#EE8577;--crit-bg:#33201D;--wait:#838D9C;--wait-bg:#1E2430;
+}}
+:root[data-theme="dark"]{
+  --bg:#10141B;--surface:#171C25;--sunk:#1E2430;--ink:#E6EAF0;--ink2:#B4BCC9;--muted:#838D9C;--rule:#2A313D;
+  --night:#0A0C1D;--night-2:#151937;--night-ink:#E6E8F6;--night-muted:#959BC4;--night-rule:#2B3060;
+  --brass:#D9A94F;--brass-soft:#2E2718;--brass-night:#E0B464;
+  --builder:#62B6D1;--builder-soft:#16272E;
+  --good:#6CC592;--good-bg:#182A20;--crit:#EE8577;--crit-bg:#33201D;--wait:#838D9C;--wait-bg:#1E2430;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;padding-inline:20px;padding-block:0 96px}
+p{margin:0}h1,h2,h3,h4{margin:0;text-wrap:balance}
+.wrap{max-width:1180px;margin-inline:auto;display:flex;flex-direction:column;gap:40px}
+header{padding-block:36px 0;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(30px,4.6vw,46px);line-height:1.08;letter-spacing:-.01em}
+.lede{color:var(--ink2);max-width:70ch;font-size:16px}
+.live{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;padding:2px 9px;border-radius:999px;background:var(--wait-bg);color:var(--ink2);letter-spacing:.04em}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--wait)}
+.live.on{background:var(--good-bg);color:var(--good)}.live.on i{background:var(--good)}
+.live.lost{background:var(--crit-bg);color:var(--crit)}.live.lost i{background:var(--crit)}
+@media (prefers-reduced-motion:no-preference){.live.on i{animation:beat 1.8s ease-in-out infinite}@keyframes beat{50%{opacity:.25}}}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.fact{background:var(--surface);padding:11px 14px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.fact b{font-family:var(--mono);font-weight:500;font-size:19px;font-variant-numeric:tabular-nums}
+.fact span{font-size:12px;color:var(--muted)}
+.now{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--builder);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.now .what{font-weight:500}
+.tail{font-family:var(--mono);font-size:12px;color:var(--ink2);display:flex;flex-direction:column;gap:2px;max-height:150px;overflow:auto}
+.tail span{overflow-wrap:anywhere}.tail em{font-style:normal;color:var(--muted)}
+h2{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.15}
+h3{font-family:var(--mono);font-weight:500;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.chart{background:var(--surface);border:1px solid var(--rule);padding:14px 14px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.chart h4{font-size:14px;font-weight:600}.chart .cap{font-size:12.5px;color:var(--muted)}
+.chart svg{width:100%;height:auto;display:block;overflow:visible;margin-top:4px}
+.chart svg text{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.bars{display:grid;grid-template-columns:max-content 1fr max-content;gap:6px 10px;align-items:center;font-size:13px;margin-top:6px}
+.bars .n{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.bar{height:9px;background:var(--sunk);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--builder);border-radius:2px}
+.bar i.b{background:var(--brass)}.bar i.m{background:var(--muted)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
+@media (min-width:980px){.cols{grid-template-columns:minmax(0,1fr) 340px;align-items:start}}
+.bookhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px}
+button{font:500 12.5px var(--sans);color:var(--ink2);background:var(--surface);border:1px solid var(--rule);padding:5px 11px;border-radius:3px;cursor:pointer}
+button:hover{color:var(--ink);border-color:var(--muted)}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--builder);outline-offset:2px}
+.book{display:flex;flex-direction:column;gap:0}
+.day{border-top:1px solid var(--rule);padding-block:22px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:700px){.day{grid-template-columns:110px minmax(0,1fr);gap:14px 24px}}
+.dayno{display:flex;flex-direction:column;gap:3px}
+.dayno b{font-family:var(--serif);font-weight:500;font-size:30px;line-height:1}
+.dayno span{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+@media (max-width:699px){.dayno{flex-direction:row;align-items:baseline;gap:12px}}
+.daybody{display:flex;flex-direction:column;gap:14px;min-width:0}
+.diary{font-family:var(--serif);font-size:16.5px;line-height:1.6;color:var(--ink2);max-width:66ch}
+.idle{color:var(--muted);font-style:italic;font-family:var(--serif);font-size:16px}
+.sit{background:var(--surface);border:1px solid var(--rule);display:flex;flex-direction:column;min-width:0}
+.sit>div{padding:13px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sit>div+div{border-top:1px solid var(--rule)}
+.sithead{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.sithead b{font-weight:600}
+.who{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.who.b{color:var(--builder)}
+.stance{font-family:var(--serif);font-style:italic;font-size:16.5px;line-height:1.45;max-width:64ch}
+.pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:74ch}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 8px;border-radius:999px;background:var(--wait-bg);color:var(--ink2);white-space:nowrap}
+.pill.good{background:var(--good-bg);color:var(--good)}.pill.crit{background:var(--crit-bg);color:var(--crit)}
+.pill.brass{background:var(--brass-soft);color:var(--brass)}.pill.bld{background:var(--builder-soft);color:var(--builder)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+details>summary{cursor:pointer;list-style-position:outside;margin-left:16px}
+details.more>summary{color:inherit}
+details.more[open]>summary .ex{display:none}
+details.more>summary .go{font-family:var(--mono);font-size:11.5px;color:var(--builder);white-space:nowrap}
+details.more[open]>summary .go::after{content:" (close)"}
+details.fold>summary{font-family:var(--mono);font-size:12px;color:var(--muted)}
+details.fold>div{padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.tools{font-family:var(--mono);font-size:12px;color:var(--ink2);display:flex;flex-direction:column;gap:2px}
+.tools span{overflow-wrap:anywhere}.tools em{font-style:normal;color:var(--muted)}
+pre.out{font-family:var(--mono);font-size:12px;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink2)}
+.note{font-size:13.5px;color:var(--ink2);border-left:2px solid var(--rule);padding-left:12px}
+.night{background:var(--night);color:var(--night-ink);border:1px solid var(--night-rule);padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.night h3{color:var(--night-muted)}
+.night .pill{background:var(--night-2);color:var(--night-muted)}
+.night .pill.brass{background:var(--night-2);color:var(--brass-night)}
+.night .pill.good{background:#173226;color:#7FD3A3}.night .pill.crit{background:#3A1F22;color:#F19A8E}
+.night .quiet{color:var(--night-muted);font-size:13.5px}
+.night details.fold>summary{color:var(--night-muted)}
+.stages{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--night-rule);border:1px solid var(--night-rule)}
+.stage{background:var(--night);padding:9px 12px;display:flex;flex-direction:column;gap:1px}
+.stage b{font-family:var(--mono);font-weight:500;font-size:17px;color:var(--brass-night);font-variant-numeric:tabular-nums}
+.stage span{font-size:11.5px;color:var(--night-muted)}
+.motifs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px 20px;font-size:13.5px}
+.motifs ul,.rail ul,.night ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px}
+.motifs div{display:flex;flex-direction:column;gap:5px;color:var(--night-ink)}
+.idea{background:var(--night-2);padding:13px 15px;display:flex;flex-direction:column;gap:8px;border-left:3px solid var(--brass-night)}
+.idea .txt{font-family:var(--serif);font-size:16.5px;line-height:1.5}
+.idea .sub{font-size:13px;color:var(--night-muted)}.idea .sub b{font-weight:500;color:var(--night-ink)}
+.link{font-size:13.5px;display:flex;flex-direction:column;gap:3px;padding-block:8px;border-top:1px solid var(--night-rule)}
+.link .meta{font-family:var(--mono);font-size:11.5px;color:var(--night-muted);overflow-wrap:anywhere}
+.link .mech{color:var(--night-muted)}
+.rail{display:flex;flex-direction:column;gap:28px;min-width:0}
+.rail section{gap:10px}
+.req{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 10px;padding-block:8px;border-top:1px solid var(--rule);font-size:13.5px}
+.req .id{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding-top:2px}
+.req .t{color:var(--ink2);font-size:12.5px}
+.rail li,.rail p{font-size:13.5px;color:var(--ink2)}
+.none{color:var(--muted);font-style:italic;font-size:13.5px}
+footer{color:var(--muted);font-size:12px;font-family:var(--mono);border-top:1px solid var(--rule);padding-top:14px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow"><span id="runname">regent</span><span class="live" id="live"><i></i><span id="livetxt">snapshot</span></span></div>
+    <h1 id="title">Waiting for the first day</h1>
+    <p class="lede" id="lede"></p>
+    <div class="now" id="now" hidden></div>
+    <div class="facts" id="facts"></div>
+  </header>
+  <section><h2>How it has gone</h2><div class="charts" id="charts"></div></section>
+  <div class="cols">
+    <section>
+      <div class="bookhead"><h2>The daybook</h2><button id="order" type="button">Newest first</button></div>
+      <div class="book" id="book"></div>
+    </section>
+    <aside class="rail" id="rail"></aside>
+  </div>
+  <footer id="foot"></footer>
+</div>
+
+<script id="data" type="application/json">null</script>
+<script>
+const INLINE = JSON.parse(document.getElementById('data').textContent);
+const LIVE = !INLINE;
+let DATA = INLINE, lastSig = '', newest = LIVE;
+try { const v = localStorage.getItem('regent-order'); if (v) newest = v === 'new'; } catch (e) {}
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd = x => '$' + (x || 0).toFixed(2);
+const sgn = x => (x > 0 ? '+' : '') + Number(x).toFixed(2);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const GROUP = {claude:'The builder', regent:'His sittings', step_back:'Stepping back', day:'The day writer', memory:'Memory',
+  saturate:'The spoon', drift:'The spoon', sift:'The spoon', stake:'Setting up', events:'Setting up', cast:'Setting up'};
+
+function more(text, key, n = 300, cls = 'pre') {
+  text = String(text || '').trim();
+  if (text.length <= n + 60) return `<p class="${cls}">${esc(text)}</p>`;
+  return `<details class="more" data-k="${esc(key)}"><summary><span class="ex ${cls}">${esc(text.slice(0, n).trimEnd())}… </span><span class="go">read it all</span></summary><p class="${cls}">${esc(text)}</p></details>`;
+}
+function fold(label, inner, key) { return `<details class="fold" data-k="${esc(key)}"><summary>${esc(label)}</summary><div>${inner}</div></details>`; }
+function toolLines(tools) { return `<div class="tools">${tools.map(t => `<span><em>${esc(t.name)}</em> ${esc(t.what)}</span>`).join('')}</div>`; }
+
+function build(D) {
+  const M = {days: [], spend: {}, total: 0, meta: null, summary: null, resumes: 0, caught: 0, kept: 0, errors: [], tools: []};
+  const byN = new Map(), hasDawn = D.events.some(e => e.kind === 'dawn');
+  const day = n => { if (!byN.has(n)) { const d = {n, mood: null, sittings: [], notes: [], text: D.days[n] || '', wrote: false,
+      night: {drifts: [], spoons: [], step: null, failed: [], memory: false, cost: 0, any: false}}; byN.set(n, d); M.days.push(d); } return byN.get(n); };
+  let cur = null, sit = null, ownTools = [], look = null, notes = [];
+  for (const e of D.events) {
+    const d = e.d;
+    if (e.kind === 'start') { M.meta = M.meta || d; if (d.resumed) M.resumes++; }
+    else if (e.kind === 'dawn') { cur = day(d.day); cur.mood = d.mood; cur.planned = d.sittings; sit = null; }
+    else if (e.kind === 'tool') { M.tools.push(d); if (d.who === 'claude') { if (sit) sit.tools.push(d); } else ownTools.push(d); }
+    else if (e.kind === 'look') look = d;
+    else if (e.kind === 'human_said') notes.push('You told him: ' + d.text);
+    else if (e.kind === 'plant') notes.push('Something you planted crossed his path.');
+    else if (e.kind === 'sitting') { cur = day(d.day); sit = {...d, tools: [], ownTools, look, notes, reply: null, check: null, cost: 0, secs: null};
+      ownTools = []; look = null; notes = []; cur.sittings.push(sit); }
+    else if (e.kind === 'reply') { if (sit) { sit.reply = d.text; sit.secs = d.seconds; } }
+    else if (e.kind === 'check') { if (sit) sit.check = d; }
+    else if (e.kind === 'call') { const g = GROUP[d.role] || 'Other'; M.spend[g] = (M.spend[g] || 0) + (d.cost || 0); M.total += d.cost || 0;
+      if (d.role === 'claude' && sit) { sit.cost += d.cost || 0; sit.secs = sit.secs ?? d.seconds; }
+      if (cur && ['day', 'memory', 'saturate', 'drift', 'sift', 'step_back'].includes(d.role)) { cur.night.cost += d.cost || 0; cur.night.any = true; if (d.role === 'memory') cur.night.memory = true; }
+      if (d.error) M.errors.push(`${d.role}: ${d.error}`); }
+    else if (e.kind === 'day') { if (!hasDawn && (!cur || cur.n !== d.n)) cur = day(d.n); const t = cur || day(d.n);
+      t.text = D.days[d.n] || t.text; t.wrote = true; t.night.any = true; if (t.mood == null) t.mood = d.mood; }
+    else if (e.kind === 'drift') { if (cur) { cur.night.drifts.push(d); cur.night.any = true; } }
+    else if (e.kind === 'spoon') { if (cur) { cur.night.spoons.push(d); cur.night.any = true; } M.caught += d.caught || 0; M.kept += d.kept || 0; }
+    else if (e.kind === 'step_back') { if (cur) { cur.night.step = d; cur.night.any = true; } }
+    else if (e.kind === 'summary') M.summary = d;
+    else if (e.kind.endsWith('_failed')) { if (cur) { cur.night.failed.push({what: e.kind.replace('_failed', ''), error: d.error}); cur.night.any = true; } }
+  }
+  const recs = Object.fromEntries((D.state.records || []).map(r => [r.turn, r]));
+  for (const dd of M.days) for (const s of dd.sittings) if (!s.reply && recs[s.n]) s.reply = recs[s.n].reply;
+  M.pendingOwn = ownTools; M.last = D.events[D.events.length - 1] || null; M.cur = cur;
+  return M;
+}
+
+function nowLine(D, M) {
+  const e = M.last, S = D.state;
+  if (!e) return 'Nothing has happened yet.';
+  if (S.finished) return 'The run is over.';
+  const n = M.cur ? M.cur.n : '';
+  if (e.kind === 'dawn') return `Morning of day ${n}. ${e.d.sittings ? 'He is reading what came back and deciding what to say.' : 'He has no time for the project today.'}`;
+  if (e.kind === 'tool' && e.d.who !== 'claude') return 'He is trying the thing himself.';
+  if (e.kind === 'look') return 'He has had his look and is deciding what to say.';
+  if (e.kind === 'sitting' || (e.kind === 'tool' && e.d.who === 'claude')) {
+    const s = M.cur && M.cur.sittings[M.cur.sittings.length - 1];
+    return `The builder is working on sitting ${s ? s.n : ''}. ${s ? plural(s.tools.length, 'tool use') + ' so far.' : ''}`; }
+  if (e.kind === 'reply' || e.kind === 'check') return 'The builder has answered. The check has run.';
+  if (['drift', 'spoon', 'day', 'step_back'].includes(e.kind) || (e.kind === 'call' && e.d.role !== 'claude' && e.d.role !== 'regent')) return `Night after day ${n}.`;
+  return `Day ${n}.`;
+}
+
+/* ---------- charts ---------- */
+const W = 320, H = 150, L = 30, R = 10, T = 12, B = 24;
+function frame(yTicks, y, xLabels, x) {
+  return yTicks.map(([v, lab]) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${lab}</text>`).join('') +
+    xLabels.map((lab, i) => (xLabels.length <= 12 || i % Math.ceil(xLabels.length / 10) === 0 || i === xLabels.length - 1) ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${esc(lab)}</text>` : '').join('');
+}
+const xAt = n => i => n <= 1 ? (L + W - R) / 2 : L + 8 + i * (W - R - L - 16) / (n - 1);
+const yAt = (lo, hi) => v => T + (hi - v) * (H - T - B) / (hi - lo || 1);
+function chart(title, cap, svg, extra = '') { return `<div class="chart"><h4>${esc(title)}</h4><p class="cap">${cap}</p>${svg ? `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${svg}</svg>` : ''}${extra}</div>`; }
+
+function charts(D, M) {
+  const out = [], days = M.days, S = D.state;
+  if (days.length) {
+    const x = xAt(days.length), y = yAt(-1, 1), pts = days.map((d, i) => [x(i), y(d.mood ?? 0), d]);
+    out.push(chart('His mood', 'Rolled each morning, leaning on the day before. A brass mark is a night the spoon fell.',
+      frame([[1, '+1'], [0, '0'], [-1, '−1']], y, days.map(d => d.n), x) +
+      `<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}"/>` +
+      pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--ink)"><title>day ${p[2].n}: mood ${sgn(p[2].mood ?? 0)}</title></circle>` +
+        (p[2].night.spoons.length ? `<circle cx="${p[0]}" cy="${H - B + 3}" r="3.2" fill="var(--brass)"><title>the spoon fell after day ${p[2].n}</title></circle>` : '')).join('')));
+    const top = Math.max(60, ...days.map(d => d.sittings.reduce((a, s) => a + s.minutes, 0))), yb = yAt(0, top), bw = Math.min(26, (W - L - R) / days.length * 0.6);
+    out.push(chart('The time he gave it', 'Minutes a day, one block a sitting. Hatched blocks are sittings where he tried it himself.',
+      `<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--builder)"/><line x1="0" y1="0" x2="0" y2="5" stroke="var(--surface)" stroke-width="2"/></pattern></defs>` +
+      frame([[top, Math.round(top)], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], yb, days.map(d => d.n), x) +
+      days.map((d, i) => { let acc = 0; return d.sittings.length ? d.sittings.map(s => { const y1 = yb(acc + s.minutes), h = yb(acc) - y1; acc += s.minutes;
+        return `<rect x="${x(i) - bw / 2}" y="${y1 + 1}" width="${bw}" height="${Math.max(1, h - 1)}" fill="${s.look ? 'url(#hatch)' : 'var(--builder)'}"><title>sitting ${s.n}: ${s.minutes} min${s.look ? ', tried it himself' : ''}</title></rect>`; }).join('')
+        : `<text x="${x(i)}" y="${yb(0) - 5}" text-anchor="middle">none</text>`; }).join('')));
+  }
+  const sits = days.flatMap(d => d.sittings);
+  if (sits.length) {
+    let asked = 0, built = 0; const rows = sits.map(s => { asked += (s.new || []).length; built += (s.built || []).length; return {s, asked, built}; });
+    const top = Math.max(4, asked), x = xAt(rows.length), y = yAt(0, top), step = k => rows.map((r, i) => (i ? `${x(i)},${y(rows[i - 1][k])} ` : '') + `${x(i)},${y(r[k])}`).join(' ');
+    const night = (S.reqs || []).filter(q => q.from_dream).length;
+    out.push(chart('What he asked for, what got built', `Counted at each sitting. ${night ? plural(night, 'requirement') + ' came from the nights.' : 'None has come from the nights yet.'}`,
+      frame([[top, top], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], y, rows.map(r => 's' + r.s.n), x) +
+      `<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" points="${step('asked')}"/><polyline fill="none" stroke="var(--good)" stroke-width="1.6" points="${step('built')}"/>` +
+      rows.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.asked)}" r="3" fill="var(--ink)"><title>sitting ${r.s.n}: ${r.asked} asked for</title></circle><circle cx="${x(i)}" cy="${y(r.built)}" r="3" fill="var(--good)"><title>sitting ${r.s.n}: ${r.built} built</title></circle>`).join('') +
+      `<text x="${W - R}" y="${y(asked) - 7}" text-anchor="end" style="fill:var(--ink)">asked ${asked}</text><text x="${W - R}" y="${y(built) - 7}" text-anchor="end" style="fill:var(--good)">built ${built}</text>`));
+  }
+  if (D.commits.length) {
+    let acc = 0; const rows = D.commits.map(c => ({...c, lines: acc += c.plus - c.minus})), top = Math.max(10, ...rows.map(r => r.lines)), x = xAt(rows.length), y = yAt(0, top);
+    const line = rows.map((r, i) => `${x(i)},${y(r.lines)}`).join(' ');
+    out.push(chart('The project growing', `Lines in the project after each of the builder's ${plural(rows.length, 'commit')}.`,
+      frame([[top, top], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], y, rows.map((r, i) => '#' + (i + 1)), x) +
+      `<polygon fill="var(--builder-soft)" points="${x(0)},${y(0)} ${line} ${x(rows.length - 1)},${y(0)}"/><polyline fill="none" stroke="var(--builder)" stroke-width="1.6" points="${line}"/>` +
+      rows.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.lines)}" r="3" fill="var(--builder)"><title>${esc(r.subject)} (+${r.plus} −${r.minus})</title></circle>`).join(''),
+      fold('What each commit said', `<div class="tools">${rows.map((r, i) => `<span><em>#${i + 1} +${r.plus} −${r.minus}</em> ${esc(r.subject)}</span>`).join('')}</div>`, 'commits')));
+  }
+  const groups = Object.entries(M.spend).sort((a, b) => b[1] - a[1]), max = groups.length ? groups[0][1] : 1;
+  if (groups.length) out.push(chart('Where the money went', `${usd(M.total)} so far.`, '',
+    `<div class="bars">${groups.map(([g, v]) => `<span>${esc(g)}</span><div class="bar"><i class="${g === 'The spoon' ? 'b' : g === 'The builder' ? '' : 'm'}" style="width:${Math.max(1.5, v / max * 100)}%"></i></div><span class="n">${usd(v)}</span>`).join('')}</div>`));
+  return out.join('');
+}
+
+/* ---------- daybook ---------- */
+function sitting(s) {
+  const chips = [`<span class="pill">${s.minutes} min</span>`, `<span class="pill ${s.verdict === 'accept' ? 'good' : s.verdict === 'reject' ? 'crit' : ''}">${esc(s.verdict)}</span>`];
+  if (s.look) chips.push('<span class="pill bld">tried it himself</span>');
+  if (s.challenged) chips.push('<span class="pill">challenged</span>');
+  if (s.constrained) chips.push('<span class="pill">set a limit</span>');
+  if ((s.new || []).length) chips.push(`<span class="pill">${plural(s.new.length, 'new requirement')}</span>`);
+  if ((s.built || []).length) chips.push(`<span class="pill good">${s.built.length} judged built</span>`);
+  if ((s.declined || []).length) chips.push(`<span class="pill brass">${plural(s.declined.length, 'night idea')} declined</span>`);
+  if ((s.constraints_changed || []).length) chips.push(`<span class="pill crit">${plural(s.constraints_changed.length, 'limit')} changed</span>`);
+  if (s.trust != null) chips.push(`<span class="pill">trust ${Number(s.trust).toFixed(2)}</span>`);
+  if (s.done) chips.push('<span class="pill good">says it is done</span>');
+  let own = '';
+  if (s.look || s.ownTools.length) own = `<div class="note">${s.look ? `He ran it himself: ${esc((s.look.ran || []).join(' · '))}. ${s.look.matched ? 'What he saw matched what he had been told.' : '<b>What he saw did not match what he had been told.</b>'}` : ''}${s.ownTools.length ? fold(plural(s.ownTools.length, 'thing') + ' he did', toolLines(s.ownTools), `own${s.n}`) : ''}</div>`;
+  const waiting = s.reply == null;
+  const builder = `<div><span class="who b">The builder${s.secs ? ` · ${(s.secs / 60).toFixed(1)} min` : ''}${s.cost ? ` · ${usd(s.cost)}` : ''}</span>` +
+    (waiting ? `<p class="none">Still working. ${plural(s.tools.length, 'tool use')} so far.</p>` : more(s.reply, `rep${s.n}`, 360)) +
+    (s.tools.length ? fold(plural(s.tools.length, 'tool use'), toolLines(s.tools), `tools${s.n}`) : '') +
+    (s.check ? `<div class="chips"><span class="pill ${s.check.ok ? 'good' : 'crit'}">check ${s.check.ok ? 'passed' : 'FAILED'}</span></div>${fold('What the check printed', `<pre class="out">${esc(s.check.tail)}</pre>`, `chk${s.n}`)}` : '') + '</div>';
+  return `<article class="sit"><div><div class="sithead"><b>Sitting ${s.n}</b><div class="chips">${chips.join('')}</div></div>` +
+    s.notes.map(n => `<p class="note">${esc(n)}</p>`).join('') +
+    `<p class="stance">${esc(s.stance_line)}</p>${own}<span class="who">He wrote</span>${more(s.message, `msg${s.n}`)}</div>${builder}</article>`;
+}
+
+function spoon(sp, k, ideas) {
+  if (!sp.candidates) return `<p class="quiet">The spoon fell and nothing was caught.</p>`;
+  const m = sp.motifs || {}, links = sp.links || [], el = sp.elements || {};
+  const list = (h, a) => (a || []).length ? `<div><h3>${h}</h3><ul>${a.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : '';
+  const linkRow = (ln, i) => `<div class="link"><span class="meta">#${i} · ${esc(ln.kind)} · ${(ln.anchors || []).map(a => `<span title="${esc(el[a] || '')}">${esc(a)}</span>`).join(' ')} → ${esc(ln.other)}</span><span>${esc(ln.text)}</span>${ln.mechanism ? `<span class="mech">Mechanism: ${esc(ln.mechanism)}</span>` : ''}</div>`;
+  const cards = sp.candidates.map((c, j) => { const me = ideas[c.text] || {}, st = me.status || 'pending';
+    const src = (c.from_indexes || []).filter(i => links[i]);
+    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for him' : 'he ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
+      `<p class="txt">${esc(c.text)}</p><p class="sub"><b>How he would see it work.</b> ${esc(c.test)}</p><p class="sub"><b>Why it might fail.</b> ${esc(c.why_it_might_fail)}</p>` +
+      (me.why ? `<p class="sub"><b>Why he declined.</b> ${esc(me.why)}</p>` : '') +
+      (src.length ? fold(`Where it came from: ${plural(src.length, 'link')}`, src.map(i => linkRow(links[i], i)).join(''), `src${k}-${j}`) : '') + '</div>'; }).join('');
+  return `<div class="motifs">${list('Motifs', m.motifs)}${list('Tensions', m.tensions)}${list('Questions', m.questions)}</div>${cards}` +
+    fold(`All ${plural(links.length, 'link')} caught that night`, links.map(linkRow).join(''), `links${k}`);
+}
+
+function night(d, ideas) {
+  const n = d.night; if (!n.any) return '';
+  const chips = [];
+  if (d.wrote) chips.push('<span class="pill">the day was written</span>');
+  if (n.memory) chips.push('<span class="pill">the project half forgotten</span>');
+  chips.push(n.spoons.length ? '<span class="pill brass">the spoon fell</span>' : '<span class="pill">no spoon</span>');
+  if (n.step) chips.push('<span class="pill good">he stepped back</span>');
+  n.failed.forEach(f => chips.push(`<span class="pill crit" title="${esc(f.error)}">${esc(f.what)} failed</span>`));
+  const written = n.drifts.reduce((a, x) => a + x.written, 0), caught = n.drifts.reduce((a, x) => a + x.caught, 0), kept = n.spoons.reduce((a, x) => a + (x.kept || 0), 0);
+  const stages = n.spoons.length || n.drifts.length ? `<div class="stages">${n.drifts.map(x => `<div class="stage"><b>${x.caught}/${x.written}</b><span>drift on ${esc(x.model)}, asked for about ${x.asked}</span></div>`).join('')}<div class="stage"><b>${caught}</b><span>links held of ${written} written</span></div><div class="stage"><b>${kept}</b><span>kept by Sift for the morning</span></div></div>` : '';
+  const step = n.step ? `<div><h3>Stepping back</h3></div><ul>${(n.step.observations || []).map(o => `<li>${esc(o)}</li>`).join('')}</ul>` +
+    ((n.step.notes || []).length ? fold('His notes for you', `<ul>${n.step.notes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>`, `stepn${d.n}`) : '') : '';
+  return `<div class="night"><div class="sithead"><h3>Night after day ${d.n}</h3><div class="chips">${chips.join('')}</div><span class="pill">${usd(n.cost)}</span></div>${stages}${n.spoons.map((sp, i) => spoon(sp, `${d.n}-${i}`, ideas)).join('')}${step}</div>`;
+}
+
+function dayBlock(d, ideas) {
+  const mood = d.mood == null ? '' : `<span>mood ${sgn(d.mood)}</span>`;
+  const body = (d.text ? more(d.text, `diary${d.n}`, 420, 'pre diary') : '') +
+    (d.sittings.length ? d.sittings.map(sitting).join('') : '<p class="idle">No time for the project today.</p>') + night(d, ideas);
+  return `<div class="day"><div class="dayno"><b>Day ${d.n}</b>${mood}<span>${d.sittings.length ? plural(d.sittings.length, 'sitting') : 'no sitting'}</span></div><div class="daybody">${body}</div></div>`;
+}
+
+function rail(D, M) {
+  const S = D.state, reqs = S.reqs || [], sec = (h, inner) => `<section><h3>${h}</h3>${inner}</section>`;
+  const ul = a => (a || []).length ? `<ul>${a.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="none">Nothing yet.</p>';
+  return sec(`Requirements · ${reqs.filter(q => q.status === 'built').length} built of ${reqs.length}`, reqs.length ? reqs.map(q =>
+      `<div class="req"><span class="id">${esc(q.id)}</span><div><div class="chips"><span class="pill ${q.status === 'built' ? 'good' : ''}">${esc(q.status)}</span>${q.from_dream ? '<span class="pill brass">from a night</span>' : ''}<span class="pill">sitting ${q.turn}</span></div><p>${esc(q.text)}</p><p class="t">${esc(q.test || '')}</p></div></div>`).join('') : '<p class="none">None yet.</p>') +
+    sec('Questions for you', (S.escalations || []).length ? ul(S.escalations.map(e => `Sitting ${e.turn}: ${e.question}`)) : '<p class="none">None. He has not needed you.</p>') +
+    sec('Limits he changed', (S.amended || []).length ? ul(S.amended.map(x => `Sitting ${x.turn}: was "${x.constraint}", now "${x.now}". ${x.why}`)) : '<p class="none">None.</p>') +
+    sec('His ways of working', ul(S.ways)) + sec('His notes for you', ul(S.human_notes)) +
+    sec('What he remembers of the project', D.memory ? more(D.memory, 'memory', 380) : '<p class="none">Nothing has been forgotten into memory yet.</p>');
+}
+
+function render() {
+  const D = DATA; if (!D) return;
+  const S = D.state || {}, M = build(D), sits = M.days.flatMap(d => d.sittings);
+  const sig = [D.events.length, S.turn, S.finished, JSON.stringify((S.reqs || []).map(q => q.status)), JSON.stringify((S.ideas || []).map(i => i.status)), Object.keys(D.days).length, D.commits.length, newest].join('|');
+  const live = document.getElementById('live'), quiet = D.quiet_for || 0;
+  live.className = 'live' + (LIVE && !S.finished ? ' on' : '');
+  document.getElementById('livetxt').textContent = !LIVE ? 'snapshot' : S.finished ? 'finished' : `live · quiet for ${quiet < 90 ? quiet + 's' : Math.round(quiet / 60) + ' min'}`;
+  if (sig === lastSig) return; lastSig = sig;
+  const open = new Set([...document.querySelectorAll('details[open]')].map(x => x.dataset.k));
+  const meta = M.meta || {}, owner = (meta.owner || S.owner || 'the owner').split('/').pop().split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), project = (meta.project || '').split('/').pop();
+  document.getElementById('runname').textContent = D.run;
+  document.getElementById('title').textContent = project ? `${owner} on ${project}` : 'Waiting for the first day';
+  const built = (S.reqs || []).filter(q => q.status === 'built').length, taken = (S.ideas || []).filter(i => i.status === 'taken').length;
+  document.getElementById('lede').textContent = M.days.length ? `${plural(M.days.length, 'day')} of his life so far${meta.days ? ` of ${Math.max(meta.days, S.days || 0)} planned` : ''}, at about ${meta.turns_per_day ?? '?'} sittings a day. He has sat down ${plural(sits.length, 'time')}. The spoon has fallen on ${plural(M.days.filter(d => d.night.spoons.length).length, 'night')} and left him ${plural((S.ideas || []).length, 'idea')}, of which he took ${taken}.` : 'The run has started. Nothing has been lived yet.';
+  const lastCheck = [...sits].reverse().find(s => s.check);
+  document.getElementById('facts').innerHTML = [[M.days.length, 'days lived'], [sits.length, 'sittings'], [`${built}/${(S.reqs || []).length}`, 'requirements built'],
+    [`${M.kept}/${M.caught}`, 'links kept of caught'], [`${taken}/${(S.ideas || []).length}`, 'night ideas taken'], [S.trust != null ? Number(S.trust).toFixed(2) : '—', 'trust in the builder'],
+    [lastCheck ? (lastCheck.check.ok ? 'passing' : 'FAILING') : '—', 'the check'], [usd(M.total), 'spent']].map(([b, s]) => `<div class="fact"><b>${esc(b)}</b><span>${s}</span></div>`).join('');
+  const now = document.getElementById('now'); now.hidden = !LIVE || !!S.finished;
+  if (!now.hidden) now.innerHTML = `<span class="what">${esc(nowLine(D, M))}</span><div class="tail">${M.tools.slice(-8).reverse().map(t => `<span><em>${esc(t.who === 'claude' ? 'builder' : t.who)} · ${esc(t.name)}</em> ${esc(t.what)}</span>`).join('')}</div>`;
+  document.getElementById('charts').innerHTML = charts(D, M);
+  const ideas = Object.fromEntries((S.ideas || []).map(i => [i.text, i])), order = newest ? [...M.days].reverse() : M.days;
+  document.getElementById('book').innerHTML = order.map(d => dayBlock(d, ideas)).join('') || '<p class="none">No day has begun.</p>';
+  document.getElementById('rail').innerHTML = rail(D, M);
+  document.getElementById('order').textContent = newest ? 'Newest first' : 'Oldest first';
+  document.getElementById('foot').textContent = `${D.run} · seed ${meta.seed ?? '?'} · ${D.events.length} ledger rows${M.resumes ? ` · resumed ${M.resumes}×` : ''}${M.errors.length ? ` · ${M.errors.length} call errors` : ''}`;
+  document.querySelectorAll('details').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
+}
+
+document.getElementById('order').addEventListener('click', () => { newest = !newest; try { localStorage.setItem('regent-order', newest ? 'new' : 'old'); } catch (e) {} render(); });
+async function tick() {
+  try { DATA = await (await fetch('/data')).json(); render(); }
+  catch (e) { const l = document.getElementById('live'); l.className = 'live lost'; document.getElementById('livetxt').textContent = 'lost the harness'; }
+  setTimeout(tick, 3000);
+}
+if (LIVE) tick(); else render();
+</script>

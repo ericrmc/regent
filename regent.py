@@ -37,6 +37,7 @@ a module.
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import math
 import os
@@ -48,6 +49,7 @@ import sys
 import threading
 import time
 import uuid
+import webbrowser
 from pathlib import Path
 
 HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
@@ -488,6 +490,84 @@ def cast_cmd(a):
           f"\n\nregent run --project <dir> --owner {root.name}")
 
 
+def latest_run(where: str | None) -> Path:
+    """A run folder, a project folder or name, or nothing at all, which means the newest run."""
+    if where and (Path(where).expanduser() / "run.db").exists():
+        return Path(where).expanduser()
+    found = sorted((HOME / "runs").glob(f"{Path(where).name if where else ''}*/run.db"), key=lambda f: f.stat().st_mtime)
+    if not found:
+        raise SystemExit(f"no run found for {where or 'anything'} in {HOME / 'runs'}")
+    return found[-1].parent
+
+
+def snapshot(root: Path) -> dict:
+    """Everything the page draws: the ledger, the state, the days he lived through, and the builder's commits."""
+    c = sqlite3.connect(f"file:{root / 'run.db'}?mode=ro", uri=True)
+    events = [{"id": i, "t": t, "kind": k, "d": json.loads(d)} for i, t, k, d in c.execute("SELECT id, t, kind, data FROM event")]
+    state = json.loads((c.execute("SELECT v FROM state WHERE k='run'").fetchone() or ["{}"])[0])
+    c.close()
+    start = next((e["d"] for e in events if e["kind"] == "start"), {})
+    days, memory, commits = {}, "", []
+    try:
+        owner = owner_dir(start.get("owner", ""))
+        lc = sqlite3.connect(f"file:{owner / 'life.db'}?mode=ro", uri=True)
+        ns = [e["d"]["n"] for e in events if e["kind"] == "day"]
+        days = dict(lc.execute(f"SELECT n, text FROM day WHERE n IN ({','.join('?' * len(ns))})", ns))
+        memory = (lc.execute("SELECT text FROM memory WHERE project=?", (start.get("project", ""),)).fetchone() or [""])[0]
+        lc.close()
+    except (SystemExit, sqlite3.Error):
+        pass
+    project = Path(start.get("project", ""))
+    log = shell("git log --reverse --format=@%ct%x09%s --shortstat", project, 20, 4000)[0] if (project / ".git").exists() else ""
+    for line in log.splitlines():
+        if line.startswith("@"):
+            when, _, subject = line[1:].partition("\t")
+            commits.append({"t": int(when), "subject": subject, "plus": 0, "minus": 0})
+        elif commits and "changed" in line:
+            commits[-1]["plus"] = int((re.search(r"(\d+) insertion", line) or [0, 0])[1])
+            commits[-1]["minus"] = int((re.search(r"(\d+) deletion", line) or [0, 0])[1])
+    fresh = max((f.stat().st_mtime for f in root.glob("run.db*")), default=0)
+    return {"run": root.name, "events": events, "state": state, "days": days, "memory": memory, "commits": commits,
+            "quiet_for": round(time.time() - fresh)}
+
+
+def watch_cmd(a, root: Path | None = None, background: bool = False):
+    """One page, two uses: served live from the ledger, or written out whole with the run inside it."""
+    root = root or latest_run(a.run)
+    page = (Path(__file__).resolve().parent / "watch.html").read_text()
+    if getattr(a, "export", None):
+        data = json.dumps(snapshot(root), ensure_ascii=False).replace("</", "<\\/")
+        page = page.replace("<title>Regent Daybook", f"<title>{root.name.rsplit('-', 2)[0]} daybook")
+        Path(a.export).write_text(page.replace('type="application/json">null<', f'type="application/json">{data}<'))
+        print(f"written to {a.export}")
+        return 0
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            live = self.path.startswith("/data")
+            body = (json.dumps(snapshot(root)) if live else
+                    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                    + page).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if live else "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
+    print(f"watching {root.name} at http://127.0.0.1:{server.server_address[1]}", flush=True)
+    webbrowser.open(f"http://127.0.0.1:{server.server_address[1]}")
+    if background:
+        return threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+
+
 def run_cmd(a):
     project = Path(a.project).expanduser().resolve()
     project.mkdir(parents=True, exist_ok=True)
@@ -708,7 +788,7 @@ def run_cmd(a):
                 f"- {q['text']} (I will check: {q['test']})" for q in d["requirements_new"])
         if S["ways"]:
             message += "\n\nMy standing ways of working, which still hold:\n" + "\n".join(f"- {w}" for w in S["ways"])
-        run.log("sitting", n=turn, day=day, minutes=round(minutes), look=look, verdict=d["verdict"], message=message,
+        run.log("sitting", n=turn, day=day, minutes=round(minutes), look=look, trust=round(S["trust"], 2), verdict=d["verdict"], message=message,
                 stance_line=d["stance_line"], challenged=d["challenged"], constrained=d["constrained"],
                 new=[q["text"] for q in d["requirements_new"]], built=d["requirements_built"],
                 declined=d["ideas_declined"], constraints_changed=d["constraints_changed"], done=d["done"])
@@ -718,6 +798,7 @@ def run_cmd(a):
         quiet = not (d["requirements_new"] or pend or d["challenged"] or d["constrained"]) and d["verdict"] == "accept"
         S["dry"] = S["dry"] + 1 if quiet else 0
 
+        run.save(S)   # so the page shows what he asked for while the builder is still at it
         out = claude(run, "claude", a.model, S["handover"] + message, cwd=project, append=norms(),
                      session=S["session"], resume=S["started"], effort=a.effort, denied=deny,
                      settings=["--strict-mcp-config", "--setting-sources", "project"],
@@ -727,6 +808,7 @@ def run_cmd(a):
         S["session_turns"] += 1
         S["claude_secs"] += out["seconds"]
         S["last_reply"] = out["text"]
+        run.log("reply", n=turn, text=out["text"], seconds=out["seconds"])
         if out["denials"]:
             run.say(f"   ! {len(out['denials'])} tool calls refused: {out['denials']}")
         if check_cmd:
@@ -813,7 +895,7 @@ def run_cmd(a):
             S["ideas"].append({"text": g["text"], "test": g["test"], "status": "pending", "label": f"I{len(S['ideas']) + 1}",
                                "might_fail": g["why_it_might_fail"],
                                "came_from": " / ".join(f"{x['text'][:220]} [{x['other']}]" for x in src)})
-        run.log("spoon", motifs=sat, caught=len(holding), kept=len(got), candidates=got,
+        run.log("spoon", motifs=sat, caught=len(holding), kept=len(got), candidates=got, elements=P,
                 links=[{k: ln[k] for k in ("kind", "text", "anchors", "other", "mechanism")} for ln in holding])
         run.say(f"   (the spoon fell: {len(holding)} links caught, {len(got)} kept for the morning)")
 
@@ -858,6 +940,8 @@ def run_cmd(a):
                 run.say(f"   ({name} failed: {str(e)[:120]})")
         return threading.Thread(target=go)
 
+    if a.watch:
+        watch_cmd(a, root, background=True)
     run.log("start", project=pname, owner=S["owner"], days=days, turns_per_day=tpd, seed=a.seed, resumed=not fresh)
     run.say(f"regent: {life.root.name} on {project}, {days} days at about {tpd:g} sittings a day, run {root}")
     while S["day_i"] < days:
@@ -868,6 +952,7 @@ def run_cmd(a):
         # A failed check pulls him back. A thing he is content with, that has gone quiet, lets him drift away.
         n = poisson(rng, tpd * (1.6 if failing else 1.0) * 0.6 ** S["dry"])
         n = max(n, 1) if S["turn"] == 0 else n
+        run.log("dawn", day=day, mood=round(S["mood"], 2), sittings=n)
         met = ""
         if plant_file.exists() and (lines := [x for x in plant_file.read_text().splitlines() if x.strip()]):
             met = lines[0]
@@ -968,6 +1053,12 @@ def main():
     r.add_argument("--effort", default="low")
     r.add_argument("--timeout", type=int, default=600, help="seconds for the charter's Check and Show commands")
     r.add_argument("--plant", action="append", default=[], help="something he comes across. He never learns it was yours")
+    r.add_argument("--watch", action="store_true", help="open the live page in a browser while it runs")
+    r.add_argument("--port", type=int, default=0, help="port for --watch. Default: any free one")
+    w = sub.add_parser("watch", help="a live page of a run: his days, his sittings, the nights, the project growing")
+    w.add_argument("run", nargs="?", help="a run folder or a project name. Default: the newest run")
+    w.add_argument("--port", type=int, default=8642)
+    w.add_argument("--export", help="write the page to this file with the run inside it, and do not serve")
     c = sub.add_parser("cast", help="roll a new owner")
     c.add_argument("--pin", action="append", default=[], help="a fact in words: 'a lock keeper', 'impatient, generous'")
     c.add_argument("--dial", action="append", default=[], help=f"set a dial instead of rolling it, e.g. bold=0.6. {', '.join(DIALS)}")
@@ -987,6 +1078,8 @@ def main():
         return run_cmd(a)
     if a.cmd == "cast":
         return cast_cmd(a)
+    if a.cmd == "watch":
+        return watch_cmd(a)
     if a.cmd == "journal":
         life = Life(owner_dir(a.owner))
         print(f"# {life.root.name}, day {life.days()}\n\n{life.recent(a.last, 4000)}")
