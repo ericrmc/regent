@@ -11,18 +11,41 @@ challenges, sets limits, changes his mind about a limit, uses the thing, and
 when he wants the code examined he asks for that in plain words — the builder
 puts a subagent on it, because Claude Code already does reviews well.
 
-What the harness adds is only what a person has and a prompt does not:
+What the harness adds is only what a person has and a prompt does not.
 
-- **A life** that goes on whether the project does or not. Most days the
-  project is absent from it.
-- **A memory** of the project that is compressed and partly lost every few
-  turns, so the builder is handed a memory rather than a transcript.
-- **Sleep.** Asleep he is not looking at the code, so what he brings back is
-  not a variation on what is already there. The dream takes a problem from his
-  life — something waited on someone who never answered, something measured
-  twice whose ends disagreed, a thing easy to do and impossible to undo — and
-  finds where the project has that same shape. The mapping is the idea. This is
-  the point of the whole thing.
+**A life.** The unit is a day. Dice decide how the day went, how many sittings
+the project gets (a Poisson draw, often none) and how long each one is
+(lognormal, bent by how thorough he is and how far he trusts the builder). A
+separate small model writes the day's journal from what the dice rolled: two
+draws from a table of things that happen in *his* weeks, an open thread that
+moves, and at most a quarter of it about the project. He is never asked to
+write it, because a model writing its own life unaided writes the same mild day
+forever.
+
+**A memory that loses things.** Each night the record of the project is
+rewritten as what a person would remember of it, and parts go. The builder is
+now and then replaced by a fresh one who gets only that memory.
+
+**Sleep.** Nobody dreams on request, so he is never asked to. The spoon cycle
+is four runs that are not him:
+
+| | model | reads | does |
+| --- | --- | --- | --- |
+| Saturate | haiku | the project as he holds it, his recent days | extracts motifs, tensions, questions. Answers nothing |
+| Drift | sonnet + haiku, in parallel, over different random days | motifs, the project by id, his bible, days drawn at random with old ones never impossible | links things nobody would file together. Every link anchors in the project and reaches into his life or anything the model knows. Mechanism over imagery |
+| Catch | code | the links, in order | the falling spoon: a link that let go of the project is a miss, each miss in a row loosens the grip, and when it drops the pass is over |
+| Sift | sonnet, fresh context | the caught links as an anonymous shuffled list, the intent, his taste record | keeps a few as requirements: not fixes for the builder, but what the thing could become for the person it is for, each with why it might fail |
+
+He meets the survivors awake, not knowing where they came from, and takes them
+or turns them down. That is the gate. What he turns down goes on his taste
+record, which Sift reads, so it is not dreamt twice. Every candidate ends in a
+row: taken, declined with his reason, or still open.
+
+**Nothing runs on a count.** Sittings, their length, whether he tries the thing
+himself, when the spoon falls, when he steps back to look at how the work is
+going, when a fresh builder takes over: each is a draw from a distribution or a
+hazard that grows with the time since it last happened, tilted by his
+disposition. A curious regent dreams more often; a patient one steps back less.
 
 ## Install
 
@@ -35,24 +58,32 @@ Python 3.11+, no dependencies. Needs the `claude` CLI on PATH.
 ## Run
 
 ```
-regent run --project ~/code/thing
+regent cast --pin "a lock keeper" --pin "cannot leave a loose end"
+regent run --project ~/code/thing --days 14 --turns-per-day 1.5 --owner <name>
 ```
 
-The charter is `<project>/.regent/charter.md` unless you pass one. It is a
-markdown file whose `##` headings the harness reads: Intent, Constraints,
-Refusals, Reserved, Budget, Tools, Check, Show, Stop. `examples/linkcheck.md`
-is a worked one.
+`cast` rolls a new owner: the dials from a normal draw, an age, and seven words
+from the system dictionary that must turn up in their life, then a model writes
+the person who fits, far from software, plus the table of things that happen in
+their weeks. `--dial bold=0.6` sets a dial instead of rolling it.
 
+`--days` is how long the run lasts in his life and `--turns-per-day` is the mean
+sittings a day, so `0.5` is every other day. Both can live in the charter's
+Budget as `days:` and `turns_per_day:`. `--dream-gap` is the mean nights between
+spoon cycles.
+
+The charter is `<project>/.regent/charter.md` unless you pass one: a markdown
+file whose `##` headings the harness reads: Intent, Constraints, Refusals,
+Reserved, Budget, Tools, Check, Show. `examples/linkcheck.md` is a worked one.
 Constraints are the *starting* shape and he may change them, recording why.
 Refusals and Reserved bind him absolutely. Check and Show are shell commands
-the harness runs in your project after each turn — how he sees the thing work
+run in your project after each sitting, which is how he sees the thing work
 without reading code.
 
-Re-running the same project resumes the last unfinished run. `--new` starts
-over.
+Re-running the same project resumes the last unfinished run at its next day.
+`--new` starts over.
 
 ```
-regent run --project ~/code/thing --turns 20 --owner piotr-mahon
 regent say  <run-dir> "stop adding flags, I want it faster"
 regent plant <run-dir> "a story about a bridge that was measured twice"
 regent journal piotr-mahon --last 10
@@ -66,11 +97,12 @@ never learns it was you.
 ```
 regent/
   regent.py                  the harness, one file
-  owners/<name>/             bible.md, disposition.json, life.db
+  owners/<name>/             bible.md, disposition.json, events.md (tracked), life.db (not)
   examples/                  worked charters
   archive/                   the old harness, as a parts bin
 
 ~/.regent/                   $REGENT_HOME, or --runs
+  owners/<name>/             owners you cast
   runs/<project>-<stamp>/
     run.db                   ledger and resumable state
     digest.md                the page you read
@@ -78,7 +110,7 @@ regent/
 
 An owner is a folder you can copy — to another machine, or to point a different
 regent at a project. His life is one SQLite file, continuous across every
-project he governs; what he remembers is per project, so a new regent on an old
+project he governs, with his taste record; what he remembers, and why he wants it, is per project, so a new regent on an old
 project starts with no memory of it.
 
 ## A note on scope
@@ -89,6 +121,6 @@ roles each with its own prompt and schema, three storage layers, and a
 hand-rolled `===RETURN===` wire protocol propped up by a plugin skill. It
 worked. Nobody could tune it.
 
-The whole of that is now ~750 lines, because almost everything it did is
+The whole of that is now one file under a thousand lines, a fifth of it prompts, because almost everything it did is
 something Claude Code already does. The harness's job is the owner, and the
 owner is a life, a memory and a dream. Read the archive before adding a module.

@@ -1,25 +1,23 @@
 # Regent: a design
 
 > **Status, 2026-09-21.** This document describes the *first* architecture,
-> which is now in `archive/`. Its premise still holds and is the reason the
-> project exists: authority sits with a simulated owner, bounded by a charter,
-> with a short list of decisions the human keeps. Read the opening section, The
-> charter, What makes it an owner, The life, Inventing requirements, Directing,
-> challenging, constraining, and What the human still does — those are current.
+> which is now in `archive/`. Its reasoning is current and is why the project
+> exists: authority sits with a simulated owner under a charter; the owner is a
+> life, a lossy memory and a divergence organ; the spoon cycle (saturate, drift,
+> catch, sift, consolidate) runs while he sleeps and is never him; the entropy
+> of a life comes from dice and not from the model; a regent is cast, not
+> specified. Read those sections as written.
 >
-> The mechanism is not. The harness is now one file of ~750 lines. Superseded
-> here: the three-level tree of regent, orchestrator and builder; dispatches and
-> returns with their `===RETURN===` protocol; the spoon cycle of saturate, drift,
-> sift and consolidate; the manifold; attention as a module with its own model
-> call; spot checks as a separate read-only call; the risk tiers and the signal
-> ladder; per-role model configuration. Claude Code does the work those parts
-> did — subagents, sessions, `--json-schema`, `--max-budget-usd` — and the
-> harness now holds only the owner: his life, his lossy memory of a project, and
-> his dreams.
+> Its mechanism is not current. The harness is one file. Gone: the three-level
+> tree of regent, orchestrator and builder; dispatches and the `===RETURN===`
+> protocol; the manifold as a store with ids and textures (the project elements
+> are numbered fresh each cycle from his memory and requirements); attention as
+> a module with its own model call; spot checks as a separate call; risk tiers
+> and the signal ladder; the interlude table; every fixed count ("every
+> fifteenth turn", "three consecutive links"), each now a draw or a hazard; and
+> the 224 tunables. Claude Code does the work those parts did.
 >
-> `README.md` and the module docstring in `regent.py` describe what actually
-> runs. This file is kept for its reasoning, not its mechanism, and has not been
-> rewritten.
+> `README.md` and the docstring in `regent.py` describe what runs.
 
 The change is where the authority sits, not what gets done. Intent,
 judgement and ideas are the same three functions a human product owner

@@ -29,3 +29,6 @@ venv/
 # SQLite write-ahead sidecars. The .db itself is the asset and is tracked.
 *.db-wal
 *.db-shm
+
+# His life is his, not the repo's. The seed (bible, disposition, events) is tracked; the days are not.
+life.db

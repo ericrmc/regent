@@ -1,35 +1,44 @@
 #!/usr/bin/env python3
-"""Regent: a simulated owner who governs a project over a long run.
+"""Regent: a simulated owner who governs a project over days of his life.
 
 One process. It holds the regent, a person with a life, a mood and a memory,
-and it runs Claude Code in the project on his behalf. A turn is a sitting: one
-regent call, then one Claude turn. Nothing else sits in Claude's path.
+and it runs Claude Code in the project on his behalf. A sitting is one regent
+call, then one Claude turn. Nothing else sits in Claude's path.
 
-    regent run --project ~/code/thing
+    regent cast --pin "impatient, generous, cannot leave a loose end"
+    regent run --project ~/code/thing --days 10 --turns-per-day 1.5
     regent say <run> "a note from you, shown at his next sitting"
     regent plant <run> "something he comes across, never traced to you"
     regent journal piotr-mahon
 
-He is an owner, not a reviewer, and he does not read code. He directs,
-challenges, sets limits, changes his mind about a limit, uses the thing, and
-when he wants the code examined he asks the builder for a review, because the
-builder has subagents for that. The harness adds only what a person has and a
-prompt does not: a life that goes on whether the project does or not, a memory
-that loses things, and sleep.
+The unit is a day. The dice decide how the day went, how many sittings the
+project gets and how long each one is; models write the prose. Awake he is an
+owner, not a reviewer: he directs, challenges, sets limits, uses the thing, and
+asks the builder for a review when he wants one, because the builder has
+subagents for that.
 
-Every few turns he rests. His memory of the project is compressed and some of
-it lost, he dreams, and the builder starts fresh from that memory. The dream is
-the point of the life. Asleep he is not looking at the code, so what he brings
-back is not a small variation on what is already there. It is a problem from
-somewhere else in his life with the same shape as one here.
+At night the work he cannot be asked to do happens without him. Nobody dreams
+on request, so he is never asked to. The spoon cycle is four runs that are not
+him. Saturate reads the project and his days and extracts what runs through
+them, answering nothing. Drift, a different run, links things that nobody would
+file together, every link anchored in the project and reaching into his life
+or anything else it knows, mechanism over imagery. Catch is the falling spoon,
+in code: the pass ends when the links let go of the project. Sift reads what
+was caught as an anonymous list in a context that never saw it made, and keeps
+a few as things the project could become. He meets those awake, takes them or
+turns them down, and that is the gate. Consolidate is the forgetting: his
+memory of the project is rewritten lossy, and what he declined goes on his
+taste record so it is not dreamt twice.
 
-The old multi-call harness is in archive/: 10,914 lines, 224 tunables and three
-storage layers doing this job. Read it before adding a module.
+Every cadence here is a draw from a distribution, never a count. The first
+harness is in archive/: 10,914 lines and 224 tunables. Read it before adding
+a module.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import re
@@ -42,58 +51,158 @@ import uuid
 from pathlib import Path
 
 HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
-SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # the regent: no tools, no servers, no settings
-REST_EVERY = 3
+SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # no tools, no servers, no settings
 SPOT_USD = 0.10   # a spot check is a glance. The CLI enforces it, so no limiter here.
+DIALS = ("bold", "curious", "patient", "trusting", "thorough", "stubborn", "restless")
 
-DECISION = {
-    "type": "object",
-    "properties": {
-        "stance_line": {"type": "string"},
-        "verdict": {"type": "string", "enum": ["continue", "accept", "reject"]},
-        "message": {"type": "string"},
-        "challenged": {"type": "boolean"},
-        "constrained": {"type": "boolean"},
-        "requirements_new": {"type": "array", "items": {"type": "object", "properties": {
-            "text": {"type": "string"}, "test": {"type": "string"},
-            "idea": {"type": "string", "description": "the label of the idea this came from, or empty"}},
-            "required": ["text", "test"]}},
-        "requirements_built": {"type": "array", "items": {"type": "string"}},
-        "ideas_declined": {"type": "array", "items": {"type": "object", "properties": {
-            "idea": {"type": "string"}, "why": {"type": "string"}}, "required": ["idea", "why"]}},
-        "constraints_changed": {"type": "array", "items": {"type": "object", "properties": {
-            "constraint": {"type": "string"}, "now": {"type": "string"}, "why": {"type": "string"}},
-            "required": ["constraint", "now", "why"]}},
-        "ask_the_human": {"type": "string"},
-        "wants_to_look": {"type": "boolean", "description": "true if you want to try the thing yourself next time"},
-        "looked_at": {"type": "array", "items": {"type": "string"}},
-        "look_matched": {"type": "boolean", "description": "if you looked today, did what you found match what you were told"},
-        "notes_to_self": {"type": "string"},
-        "journal": {"type": "string"},
-        "done": {"type": "boolean"},
-    },
-    "required": ["stance_line", "verdict", "message", "challenged", "constrained", "requirements_new",
-                 "requirements_built", "ideas_declined", "constraints_changed", "ask_the_human", "wants_to_look",
-                 "looked_at", "look_matched", "notes_to_self", "journal", "done"],
-}
-IDEAS = {"type": "object", "properties": {"ideas": {"type": "array", "items": {"type": "object", "properties": {
-    "text": {"type": "string"}, "test": {"type": "string"},
-    "came_from": {"type": "string", "description": "the thing in your life it came from, and the shape they share"}},
-    "required": ["text", "test", "came_from"]}}}, "required": ["ideas"]}
-STEPBACK = {"type": "object", "properties": {
-    "observations": {"type": "array", "items": {"type": "string"}},
-    "ways": {"type": "array", "items": {"type": "string"}},
-    "notes_for_the_human": {"type": "array", "items": {"type": "string"}}},
-    "required": ["observations", "ways", "notes_for_the_human"]}
+STR, BOOL = {"type": "string"}, {"type": "boolean"}
 
-LIFE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS day(n INTEGER PRIMARY KEY, iso TEXT, text TEXT);
-CREATE TABLE IF NOT EXISTS memory(project TEXT PRIMARY KEY, text TEXT, iso TEXT);
-"""
-RUN_SCHEMA = """
-CREATE TABLE IF NOT EXISTS event(id INTEGER PRIMARY KEY, t REAL, kind TEXT, data TEXT);
-CREATE TABLE IF NOT EXISTS state(k TEXT PRIMARY KEY, v TEXT);
-"""
+
+def arr(x: dict) -> dict:
+    return {"type": "array", "items": x}
+
+
+def obj(**props) -> dict:
+    return {"type": "object", "properties": props, "required": list(props)}
+
+
+DECISION = obj(
+    stance_line=STR, verdict={"type": "string", "enum": ["continue", "accept", "reject"]}, message=STR,
+    challenged=BOOL, constrained=BOOL, requirements_new=arr(obj(text=STR, test=STR, idea=STR)),
+    requirements_built=arr(STR), ideas_declined=arr(obj(idea=STR, why=STR)),
+    constraints_changed=arr(obj(constraint=STR, now=STR, why=STR)), ask_the_human=STR,
+    wants_to_look=BOOL, looked_at=arr(STR), look_matched=BOOL, notes_to_self=STR, done=BOOL)
+MOTIFS = obj(motifs=arr(STR), tensions=arr(STR), questions=arr(STR))
+LINKS = obj(links=arr(obj(kind={"type": "string", "enum": ["metaphor", "causal analogy", "structural analogy", "seed"]},
+                          text=STR, anchors=arr(STR), other=STR, mechanism=STR)))
+SIFTED = obj(candidates=arr(obj(text=STR, test=STR, from_indexes=arr({"type": "integer"}), why_it_might_fail=STR)))
+STEPBACK = obj(observations=arr(STR), ways=arr(STR), notes_for_the_human=arr(STR))
+CAST = obj(name=STR, slug=STR, bible=STR, events=arr(STR))
+EVENTS = obj(events=arr(STR))
+
+SATURATE_P = """Read all of this and extract what runs through it. Answer nothing.
+
+THE PROJECT, as its owner holds it. Each element has an id.
+{project}
+
+THE OWNER'S RECENT DAYS
+{life}
+
+Extract three things. Motifs: a shape that recurs in more than one place, in the project or across the project and the
+days. Tensions: two things here that pull against each other. Questions: what this raises and does not settle.
+Prefer the motif nobody has named yet. Do not answer the questions, propose work, recommend or rank."""
+
+DRIFT_P = """Produce about {target} links between things that do not obviously belong together.
+
+MOTIFS FROM THIS CYCLE
+{motifs}
+
+THE PROJECT. Each element has an id beginning with p.
+{project}
+
+A LIFE. The person this project belongs to, and some of their days, drawn at random. Day ids begin with L.
+{bible}
+
+{days}
+
+The life is fuel. It is not evidence and it settles nothing. It is where a bridge comes from that the project could not
+have supplied on its own, because everything in the project is already filed next to everything else in it.
+
+No problem is attached to this pass. Do not invent one to aim at. The disposition tonight is {stance}: risk-weighted
+leans toward what fails, what has no limit, what happens twice; opportunity-weighted leans toward what this could also
+be, which two parts are really one thing, who else it serves. Both are wanted. The lean tilts the mix.
+
+A link is two elements nobody would file together, plus the thing that transfers between them. Every link names at
+least one project id in anchors. A link with none is discarded, and the pass ends when they keep coming, so anchor in
+the project and then reach. In other, name what it was joined to: a day id, a person or place from the life, or
+"outside: <domain>" for anything you already know. Reach anywhere: queueing, metallurgy, epidemiology, shipping,
+typesetting, funerals, allotments. Mechanism over imagery, always. A link that imports how one thing's machinery would
+work in the other's place is worth fifty that observe two things are alike. State the transferable mechanism in one
+line, or leave it empty when the link is only an image. Do not link the same pair twice."""
+
+SIFT_P = """Evaluate a list of proposals from an unknown source. You have not seen it before and know nothing about who
+wrote it or why. Judge each on what it says, not how it is phrased.
+
+THE LIST, numbered from 0
+{holding}
+
+WHAT IS BEING BUILT AND WHO IT IS FOR
+{intent}
+
+NEVER CROSSED
+{refusals}
+
+WHAT IT ALREADY DOES
+{built}
+
+WHAT ITS OWNER HAS TAKEN AND TURNED DOWN BEFORE, AND WHY
+{taste}
+
+Weigh each proposal on novelty (how far from what anyone working on this would already have written down), mechanism
+(does it name machinery that transfers and acts, or only a resemblance), leverage (how much changes if it is right) and
+cost. Where proposals share a mechanism, combine them into one candidate that carries it once.
+
+Keep at most {keep}, and fewer if fewer are good. Do not solve the builder's problems. That is the builder's job. The
+question is what this could become, and what it is missing for the person it is for. Write each survivor as a
+requirement: something that person would notice when using the thing, small enough to build in one go, with in test how
+they would see that it works. Nothing that crosses a refusal, nothing that repeats what it does, nothing he has turned
+down. In why_it_might_fail name the specific way it is wrong, not a general caution. An empty list is a fine answer."""
+
+DAY_P = """Write one day of this person's journal, the way they write for themselves: fragments, dropped subjects, times,
+names, a line someone said, a thing left hanging. {words} words. No scene-setting, no summary, no reflection, no lesson.
+
+WHO THEY ARE
+{bible}
+
+HOW THEIR LAST DAYS ENDED, for continuity only
+{recent}
+
+Their standing routines are in the bible and already in the journal many times over: the waking, the first drink, who
+sits where, the commute, the usual lunch, the usual supper. None of it is written again unless today it broke. Begin in
+the middle, at the first thing the dice rolled. A day is what differed.
+
+WHAT THE DICE ROLLED FOR TODAY. Every one of these is in the entry.
+- The day went {valence}.
+{rolled}
+- One of their open threads moves a little, or pointedly does not.
+
+THE PROJECT TODAY
+{project}
+What they write about it comes only from the lines above, never invented, and it is at most a quarter of the entry."""
+
+CAST_P = """Write a person. The dice are rolled and you hold what they rolled. You supply the prose.
+
+Age {age}. Disposition, each from -1 to +1: {dials}.
+Each of these words turns up somewhere in their life, as an object, a place, a name or a trade: {words}.
+Pinned by the human, and these win over everything else: {pins}
+
+They will own a small software project one day and know nothing about software. Their work and their life are far from
+it, and that distance is the point. Nobody designed this person: no tidy arc, no quirks for show, money and family and
+a body that has a history.
+
+bible is markdown with exactly these headings: "## Who this is" (work, home, habits, money, how they talk and what they
+are like to work for, fitted to the disposition without naming it), "## The cast" (six to eight people, each with
+unfinished business), "## Places" (four, with what is broken in each), "## History", "## Open threads" (six to nine
+things left hanging). 800 to 1100 words. name is their full name and slug is it in lowercase with hyphens.
+
+events is sixty short lines: things that could happen in one of this person's weeks, tied to their places and people,
+small and concrete, most of them mundane and some of them going wrong. None about software."""
+
+
+def poisson(rng: random.Random, mean: float) -> int:
+    limit, k, p = math.exp(-mean), 0, rng.random()
+    while p > limit:
+        k, p = k + 1, p * rng.random()
+    return k
+
+
+def due(rng: random.Random, since: float, mean_gap: float) -> bool:
+    """A hazard, not a schedule: the longer since it last happened, the likelier it is tonight."""
+    return rng.random() < 1 - math.exp(-since / max(mean_gap, 0.2))
+
+
+def clip(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, x))
 
 
 def db(path: Path, schema: str) -> sqlite3.Connection:
@@ -105,16 +214,24 @@ def db(path: Path, schema: str) -> sqlite3.Connection:
 
 
 class Life:
-    """His life, one file per owner, so a regent is a thing you copy from one
-    machine or project to another. The day number comes from the table itself,
-    which is what stops two runs on two projects writing over the same day."""
+    """An owner is a folder: bible.md, disposition.json, events.md, life.db. The
+    folder is the whole person, so a regent is a thing you copy. The day number
+    comes from the table itself, which is what stops two runs on two projects
+    writing over the same day."""
+
+    SCHEMA = """
+    CREATE TABLE IF NOT EXISTS day(n INTEGER PRIMARY KEY, iso TEXT, text TEXT);
+    CREATE TABLE IF NOT EXISTS memory(project TEXT PRIMARY KEY, text TEXT, iso TEXT);
+    CREATE TABLE IF NOT EXISTS stake(project TEXT PRIMARY KEY, text TEXT);
+    CREATE TABLE IF NOT EXISTS taste(id INTEGER PRIMARY KEY, project TEXT, verdict TEXT, idea TEXT, why TEXT);
+    """
 
     def __init__(self, root: Path):
         self.root = root
         self.bible = (root / "bible.md").read_text()
         d = root / "disposition.json"
         self.disp = json.loads(d.read_text()) if d.exists() else {}
-        self.c = db(root / "life.db", LIFE_SCHEMA)
+        self.c = db(root / "life.db", self.SCHEMA)
         self.lock = threading.Lock()
 
     def d(self, k: str) -> float:
@@ -124,39 +241,44 @@ class Life:
     def who(self) -> str:
         return self.bible.split("## The cast")[0][:1800]
 
-    @property
-    def stake(self) -> str:
-        m = re.search(r"^## Why I want this\s*\n(.*?)(?=^## |\Z)", self.bible, re.S | re.M)
-        return m.group(1).strip() if m else ""
+    def q(self, sql: str, *args) -> list:
+        with self.lock:
+            return self.c.execute(sql, args).fetchall()
 
     def add_day(self, text: str) -> int:
         with self.lock:
-            cur = self.c.execute("INSERT INTO day(n, iso, text) VALUES "
-                                 "((SELECT COALESCE(MAX(n),0)+1 FROM day), ?, ?)", (time.strftime("%F"), text))
-            return cur.lastrowid
+            return self.c.execute("INSERT INTO day(n, iso, text) VALUES ((SELECT COALESCE(MAX(n),0)+1 FROM day), ?, ?)",
+                                  (time.strftime("%F"), text)).lastrowid
 
     def days(self) -> int:
-        with self.lock:
-            return self.c.execute("SELECT COALESCE(MAX(n),0) FROM day").fetchone()[0]
+        return self.q("SELECT COALESCE(MAX(n),0) FROM day")[0][0]
 
-    def recent(self, k: int, chars: int = 600) -> str:
-        with self.lock:
-            rows = self.c.execute("SELECT n, text FROM day ORDER BY n DESC LIMIT ?", (k,)).fetchall()
-        return "\n\n".join(f"day {n}\n{t[:chars]}" for n, t in reversed(rows))
+    def recent(self, k: int, chars: int = 600, tail: bool = False) -> str:
+        rows = self.q("SELECT n, text FROM day ORDER BY n DESC LIMIT ?", k)
+        return "\n\n".join(f"day {n}\n{'...' + t[-chars:] if tail else t[:chars]}" for n, t in reversed(rows))
 
-    def memory(self, project: str) -> str:
-        with self.lock:
-            r = self.c.execute("SELECT text FROM memory WHERE project=?", (project,)).fetchone()
-        return (r[0] if r else "").strip()
+    def sample(self, rng: random.Random, k: int, chars: int = 700) -> str:
+        """Days drawn without replacement, recent ones likelier, old ones never impossible. That is replay."""
+        rows, top = self.q("SELECT n, text FROM day"), self.days()
+        keyed = sorted(rows, key=lambda r: rng.random() ** (1 / math.exp(-(top - r[0]) / 40)), reverse=True)[:k]
+        return "\n\n".join(f"L{n}: {t[:chars]}" for n, t in sorted(keyed))
 
-    def remember(self, project: str, text: str):
-        with self.lock:
-            self.c.execute("INSERT INTO memory(project, text, iso) VALUES(?,?,?) ON CONFLICT(project) "
-                           "DO UPDATE SET text=excluded.text, iso=excluded.iso", (project, text, time.strftime("%F")))
+    def get(self, table: str, project: str) -> str:
+        r = self.q(f"SELECT text FROM {table} WHERE project=?", project)
+        return (r[0][0] if r else "").strip()
+
+    def put(self, table: str, project: str, text: str):
+        self.q(f"INSERT OR REPLACE INTO {table}(project, text) VALUES(?,?)", project, text)
+
+    def judged(self, project: str, verdict: str, idea: str, why: str):
+        self.q("INSERT INTO taste(project, verdict, idea, why) VALUES(?,?,?,?)", project, verdict, idea, why)
+
+    def taste(self, k: int = 15) -> str:
+        rows = self.q("SELECT verdict, idea, why FROM taste ORDER BY id DESC LIMIT ?", k)
+        return "\n".join(f"- {v}: {i[:140]}" + (f" Because: {w}" if w else "") for v, i, w in rows) or "nothing yet"
 
     def close(self):
-        """Fold the write-ahead log back in, so the .db is the whole database and
-        copying or committing that one file carries his whole life."""
+        """Fold the write-ahead log back in, so copying the folder carries his whole life."""
         with self.lock:
             self.c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             self.c.close()
@@ -165,9 +287,14 @@ class Life:
 class Run:
     """The run: an append-only ledger and one resumable state blob."""
 
+    SCHEMA = """
+    CREATE TABLE IF NOT EXISTS event(id INTEGER PRIMARY KEY, t REAL, kind TEXT, data TEXT);
+    CREATE TABLE IF NOT EXISTS state(k TEXT PRIMARY KEY, v TEXT);
+    """
+
     def __init__(self, root: Path):
         self.root = root
-        self.c = db(root / "run.db", RUN_SCHEMA)
+        self.c = db(root / "run.db", self.SCHEMA)
         self.lock = threading.Lock()
         self.t0 = time.time()
 
@@ -176,11 +303,10 @@ class Run:
             self.c.execute("INSERT INTO event(t, kind, data) VALUES(?,?,?)",
                            (round(time.time() - self.t0, 1), kind, json.dumps(kw, ensure_ascii=False)))
 
-    def rows(self, kind: str | None = None) -> list[dict]:
-        q = "SELECT t, kind, data FROM event" + (" WHERE kind=?" if kind else "")
+    def rows(self, kind: str) -> list[dict]:
         with self.lock:
-            rows = self.c.execute(q, (kind,) if kind else ()).fetchall()
-        return [{"t": t, "kind": k, **json.loads(d)} for t, k, d in rows]
+            rows = self.c.execute("SELECT data FROM event WHERE kind=?", (kind,)).fetchall()
+        return [json.loads(d) for (d,) in rows]
 
     def load(self) -> dict | None:
         r = self.c.execute("SELECT v FROM state WHERE k='run'").fetchone()
@@ -188,8 +314,7 @@ class Run:
 
     def save(self, s: dict):
         with self.lock:
-            self.c.execute("INSERT INTO state(k, v) VALUES('run', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
-                           (json.dumps(s, ensure_ascii=False),))
+            self.c.execute("INSERT OR REPLACE INTO state(k, v) VALUES('run', ?)", (json.dumps(s, ensure_ascii=False),))
 
     def say(self, text: str):
         print(f"[{(time.time() - self.t0) / 60:5.1f}m] {text}", flush=True)
@@ -221,22 +346,13 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
     start = time.time()
     cmd = ["claude", "-p", "--model", model, *(settings if settings is not None else SEALED),
            "--output-format", "stream-json", "--verbose"]
-    if system:
-        cmd += ["--system-prompt", system]
-    if append:
-        cmd += ["--append-system-prompt", append]
-    if tools is not None:
-        cmd += ["--tools", tools]
+    for flag, val in (("--system-prompt", system), ("--append-system-prompt", append), ("--tools", tools),
+                      ("--disallowedTools", ",".join(denied or [])), ("--json-schema", schema and json.dumps(schema)),
+                      ("--effort", effort), ("--max-budget-usd", usd and str(usd))):
+        if val or (flag == "--tools" and val is not None):
+            cmd += [flag, val]
     if allowed:
         cmd += ["--permission-mode", "acceptEdits", "--allowedTools", allowed]
-    if denied:
-        cmd += ["--disallowedTools", ",".join(denied)]
-    if schema:
-        cmd += ["--json-schema", json.dumps(schema)]
-    if effort:
-        cmd += ["--effort", effort]
-    if usd:
-        cmd += ["--max-budget-usd", str(usd)]
     if session:
         cmd += ["--resume", session] if resume else ["--session-id", session]
     else:
@@ -279,18 +395,45 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
             structured = json.loads(result.get("result") or "")
         except (json.JSONDecodeError, TypeError):
             raise RuntimeError(f"{role} returned no structured output: {err or (result.get('result') or '')[:200]}")
-    return {"text": result.get("result") or "", "data": structured, "cost": result.get("total_cost_usd", 0),
-            "seconds": secs, "denials": denials, "session": result.get("session_id"), "used": used}
+    return {"text": result.get("result") or "", "data": structured, "seconds": secs, "denials": denials,
+            "session": result.get("session_id")}
 
 
-def cut(text: str, mode: str) -> str:
-    """The skim is done by withholding. A model reads every token it is handed."""
-    if mode == "full" or len(text) < 700:
+def ask(run: Run, role: str, model: str, prompt: str, schema: dict | None = None, system: str | None = None):
+    """A sealed call: no tools, no settings, nothing but the words."""
+    got = claude(run, role, model, prompt, cwd=run.root, tools="", schema=schema, system=system)
+    return got["data"] if schema else got["text"].strip()
+
+
+def cut(text: str, minutes: float) -> str:
+    """The skim is done by withholding. A model reads every token it is handed,
+    so he is handed what his minutes bought and told how much he left unread."""
+    lines = text.splitlines()
+    budget = int(minutes * 1.5) + 6
+    if len(lines) <= budget:
         return text
-    if mode == "glance":
-        return text[:300] + "\n[...]\n" + text[-200:]
-    keep = [ln for ln in text.splitlines() if re.search(r"\d|fail|error|assum|recommend|cannot|not ", ln, re.I)][:14]
-    return text[:500] + "\n[...]\n" + "\n".join(keep) + "\n[...]\n" + text[-300:]
+    loud = [ln for ln in lines[budget // 2:-budget // 4] if re.search(r"fail|error|assum|recommend|cannot|\bnot\b", ln, re.I)]
+    kept = lines[:budget // 2] + loud[:budget // 4] + lines[-budget // 4:]
+    return "\n".join(kept) + f"\n[you read {len(kept)} of {len(lines)} lines. The rest is there. You did not get to it.]"
+
+
+def catch(links: list[dict], ids: set[str], rng: random.Random) -> list[dict]:
+    """The falling spoon. A link that has let go of the project, or that repeats a
+    pair, is a miss. Each miss in a row loosens the grip, and when the spoon
+    drops the pass is over, however much more was written after it."""
+    kept, seen, misses = [], set(), 0
+    for ln in links:
+        anchors = sorted(x for x in ln["anchors"] if x in ids)
+        pair = (tuple(anchors), ln["other"].strip().lower())
+        if not anchors or pair in seen:
+            misses += 1
+            if rng.random() < 1 - 2 * 0.5 ** misses:   # one miss is free, then 0.5, 0.75, 0.88
+                break
+            continue
+        misses = 0
+        seen.add(pair)
+        kept.append({**ln, "anchors": anchors})
+    return kept
 
 
 def shell(cmd: str, cwd: Path, timeout: int, lines: int) -> tuple[str, bool]:
@@ -304,15 +447,41 @@ def shell(cmd: str, cwd: Path, timeout: int, lines: int) -> tuple[str, bool]:
 
 
 def owner_dir(name: str) -> Path:
-    """An owner is a folder: bible.md, disposition.json, life.db. Named owners
-    live with the tool; a path points anywhere, so an owner travels."""
     p = Path(name).expanduser()
     if p.is_dir():
         return p
     for base in (HOME / "owners", Path(__file__).resolve().parent / "owners"):
         if (base / name).is_dir():
             return base / name
-    raise SystemExit(f"no owner {name!r}: looked in {HOME / 'owners'} and beside regent.py")
+    raise SystemExit(f"no owner {name!r}: looked in {HOME / 'owners'} and beside regent.py. Roll one with: regent cast")
+
+
+def cast_cmd(a):
+    """A regent is cast, not specified. The human pins a few facts, the dice roll
+    the rest, and a model writes the person who fits. The entropy comes from
+    outside the model: a model asked to be random returns its favourite few."""
+    rng = random.Random(a.seed)
+    dials = {k: round(clip(rng.gauss(0, 0.45), -0.9, 0.9), 2) for k in DIALS}
+    for pin in a.dial:
+        k, _, v = pin.partition("=")
+        dials[k.strip()] = clip(float(v))
+    try:
+        vocab = [w for w in Path("/usr/share/dict/words").read_text().split() if 4 < len(w) < 10 and w.islower()]
+    except OSError:
+        vocab = []
+    words = rng.sample(vocab, 7) if vocab else ["(none rolled)"]
+    run = Run(HOME / "casting")
+    got = ask(run, "cast", a.model, CAST_P.format(
+        age=int(clip(rng.gauss(48, 15), 19, 84)), dials=", ".join(f"{k} {v:+.2f}" for k, v in dials.items()),
+        words=", ".join(words), pins="; ".join(a.pin) or "nothing"), CAST)
+    root = HOME / "owners" / (a.name or re.sub(r"[^a-z0-9-]", "", got["slug"].lower()) or f"owner-{a.seed}")
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "bible.md").write_text(got["bible"].strip() + "\n")
+    (root / "disposition.json").write_text(json.dumps({**dials, "rolled": {"seed": a.seed, "words": words}}, indent=2))
+    (root / "events.md").write_text("\n".join(got["events"]) + "\n")
+    print(f"\n{got['name']}  ->  {root}\n  " + ", ".join(f"{k} {v:+.2f}" for k, v in dials.items()) +
+          f"\n  rolled words: {', '.join(words)}\n\n" + got["bible"].split("## The cast")[0].strip()[:900] +
+          f"\n\nregent run --project <dir> --owner {root.name}")
 
 
 def run_cmd(a):
@@ -323,57 +492,71 @@ def run_cmd(a):
     root = None
     if prior and not a.new:
         s = Run(prior[-1]).load()
-        if s and not s.get("finished"):
+        if s and not s.get("finished") and "day_i" in s:
             root = prior[-1]
     fresh = root is None
     if fresh:
         root = runs / f"{project.name}-{time.strftime('%m%d-%H%M')}"
     run = Run(root)
-    S = run.load() if not fresh else None
+    S = None if fresh else run.load()
+    pname = str(project)
 
     if S:
-        charter_text = S["charter"]
         life = Life(owner_dir(S["owner"]))
-        run.say(f"resuming {root.name} at turn {S['turn']} of {S['turns']}. Use --new to start over.")
+        run.say(f"resuming {root.name} at day {S['day_i'] + 1}. Use --new to start over.")
     else:
         cf = Path(a.charter).expanduser() if a.charter else project / ".regent" / "charter.md"
         if not cf.exists():
-            raise SystemExit(f"no charter at {cf}" if a.charter else
-                             f"no charter. Pass one, or put it in {cf}")
-        charter_text = cf.read_text()
-        # The charter and the project's own git live in here too, so neither counts
-        # as something already built. An empty project gets told it is empty.
+            raise SystemExit(f"no charter at {cf}" if a.charter else f"no charter. Pass one, or put it in {cf}")
+        # The charter and the project's own git live in here too, so neither counts as something already built.
         had_code = any(x for x in project.iterdir() if x.name not in (".regent", ".git"))
         life = Life(owner_dir(a.owner))
-        m = re.search(r"turns:\s*(\d+)", sections(charter_text).get("budget", ""))
-        S = {"charter": charter_text, "owner": a.owner, "project": str(project),
-             "turns": a.turns or (int(m.group(1)) if m else 12), "turn": 0, "finished": False,
+        S = {"charter": cf.read_text(), "owner": a.owner, "day_i": 0, "turn": 0, "finished": False,
              "reqs": [], "ideas": [], "ways": [], "amended": [], "escalations": [], "notes": [], "human_notes": [],
-             "records": [], "compressed_upto": 0, "trust": 0.5 + 0.1 * life.d("trusting"), "stance": life.d("bold") * 0.4,
-             "since_rest": 0, "dry": 0, "rests": 0, "last_look": -9, "wants_look": had_code,
+             "records": [], "compressed_upto": 0, "trust": 0.5 + 0.1 * life.d("trusting"), "mood": 0.0, "dry": 0,
+             "since_dream": 0, "since_step": 0, "since_look": 2, "session_turns": 0, "wants_look": had_code,
              "existing": had_code, "last_reply": "", "last_check": "", "last_show": "", "check_ok": False,
-             "session": str(uuid.uuid4()), "started": False, "handover": "", "claude_secs": 0.0, "blocking": 0.0,
-             "counts": {"direct": 0, "challenge": 0, "constrain": 0, "dreams": 0, "step_backs": 0, "rests": 0,
-                        "looks": 0, "waved": 0, "fresh": 0}}
+             "built_once": had_code, "session": str(uuid.uuid4()), "started": False, "handover": "",
+             "claude_secs": 0.0, "blocking": 0.0,
+             "counts": {"direct": 0, "challenge": 0, "constrain": 0, "cycles": 0, "step_backs": 0, "looks": 0,
+                        "empty_days": 0, "fresh": 0}}
 
-    ch = sections(charter_text)
-    turns = a.turns or S["turns"]
+    ch = sections(S["charter"])
+
+    def budget(key: str) -> float:
+        m = re.search(rf"^{key}:\s*([\d.]+)", ch.get("budget", ""), re.M)
+        return float(m.group(1)) if m else 0.0
+    tpd = a.turns_per_day or S.get("tpd") or budget("turns_per_day") or 1.0
+    days = a.days or S.get("days") or int(budget("days") or budget("turns") / tpd) or 10
+    S["tpd"], S["days"] = tpd, days
     check_cmd, show_cmd = ch.get("check", "").strip().strip("`"), ch.get("show", "").strip().strip("`")
     tool_lines = [ln.strip("- ").strip() for ln in ch.get("tools", "").splitlines() if ln.strip().startswith("-")]
     his_bash = ",".join(sorted({f"Bash({t.split()[0]}:*)" for t in tool_lines})) or "Bash(ls:*)"
     deny = ["WebFetch", "WebSearch"] if re.search(r"network", ch.get("refusals", ""), re.I) else []
-    pname = str(project)
-    rng = random.Random(a.seed + S["turn"])
     inbox, plant_file = root / "inbox.md", root / "plant.md"
     for line in a.plant:
         with plant_file.open("a") as f:
             f.write(line + "\n")
 
+    # Two things a life needs that a bible does not carry: what could happen in a week of it, for the dice to draw
+    # from, and why this person wants this project. Each is written once, by a model, the first time it is missed.
+    ev_file = life.root / "events.md"
+    if not ev_file.exists():
+        got = ask(run, "events", "haiku", "Sixty short lines: things that could happen in one of this person's weeks, tied to "
+                  "their places and people, small and concrete, most of them mundane and some going wrong. None about "
+                  "software.\n\n" + life.bible, EVENTS)
+        ev_file.write_text("\n".join(got["events"]) + "\n")
+    happenings = [x for x in ev_file.read_text().splitlines() if x.strip()]
+    if not life.get("stake", pname):
+        life.put("stake", pname, ask(run, "stake", "sonnet", "This person is about to have this built for them:\n\n" +
+                 ch.get("intent", "") + "\n\nWho they are:\n\n" + life.bible + "\n\nIn their own voice, first person, under "
+                 "150 words: why they want it. The reason comes out of their life as written, something specific that "
+                 "happened or keeps happening, not out of any interest in software."))
+
     system = (
         "You are the owner of a project, and you are this person:\n\n" + life.who +
-        "\n\nWhy you want it built, in your own words:\n\n" + life.stake +
-        "\n\nYour disposition, from -1 to +1: " + ", ".join(f"{k} {v:+.1f}" for k, v in life.disp.items()
-                                                            if isinstance(v, (int, float))) +
+        "\n\nWhy you want it built, in your own words:\n\n" + life.get("stake", pname) +
+        "\n\nYour disposition, from -1 to +1: " + ", ".join(f"{k} {life.d(k):+.1f}" for k in DIALS) +
         "\n\nSomeone capable is building it for you. You give it a small part of your day. You say what you want, you look at "
         "what comes back, you ask why a thing is the way it is, you set limits, and you think of things nobody asked for. "
         "Speak as yourself, plainly and briefly.\n\n"
@@ -383,9 +566,8 @@ def run_cmd(a):
         "The charter's REFUSALS and RESERVED decisions bind you, and you never cross them. A reserved decision goes to the "
         "human in ask_the_human, and the rest of the work carries on. The charter's CONSTRAINTS are different. They are the "
         "starting shape of the thing, written before anyone had used it. They are yours to change when the project has "
-        "outgrown one: say which, what it becomes and why, in constraints_changed. It is recorded for the person who gave you "
-        "the charter, and nobody has to approve it. Do not turn down a good idea of your own because a starting constraint is "
-        "in its way. Change the constraint.\n\n"
+        "outgrown one: say which, what it becomes and why, in constraints_changed. Nobody has to approve it. Do not turn "
+        "down a good idea of your own because a starting constraint is in its way. Change the constraint.\n\n"
         "Judge on what the harness ran and on what you see for yourself, not on what you are told.\n\n"
         "You are not a programmer and you do not read code. When you want the code examined, or the thing attacked with "
         "awkward cases the builder did not make up, ask for that in your message. The builder will put a subagent on it and "
@@ -401,9 +583,8 @@ def run_cmd(a):
             "a subagent is still running. When he asks for a review, for the code examined, or for awkward cases tried, put a "
             "subagent on it and report what it found; he cannot read code and will not check it himself. "
             "Run what you build. Commit your work in the project before you finish your turn, with a short message saying what "
-            "changed. "
-            "The owner reads words, not code: keep a short README, the usage text, the docstrings and the comments current and "
-            "true, because that is what he checks you against. "
+            "changed. The owner reads words, not code: keep a short README, the usage text, the docstrings and the comments "
+            "current and true, because that is what he checks you against. "
             "Reply in under 250 words: one sentence on what changed, what you recommend next, anything you assumed that he "
             "never said, then the commands you ran with their real output.\n\nThese are never crossed:\n"
             + ch.get("refusals", "") + "\n\nThese are the starting constraints:\n" + ch.get("constraints", "")
@@ -413,150 +594,22 @@ def run_cmd(a):
     def pending():
         return [i for i in S["ideas"] if i["status"] == "pending"]
 
-    def compress():
-        raw = "\n\n".join(
-            f"Turn {r['turn']}. He said: {r['message'][:500]}\nThe builder said: {r['reply'][:700]}\n"
-            f"The check {'passed' if r['check_ok'] else 'failed'}. New requirements: {r['new']}. "
-            f"Ideas declined: {r['declined']}. Limits changed: {r['amended']}."
-            for r in S["records"] if r["turn"] > S["compressed_upto"])
-        if not raw:
-            return
-        prompt = ("What was remembered before:\n" + (life.memory(pname) or "nothing") + "\n\nWhat has happened since:\n" + raw +
-                  "\n\nRewrite all of it as what a person would remember of this project a few days later. Keep the events in "
-                  "order by turn, what was asked for, what got built, what failed, what was decided, what is still open. Keep "
-                  "nothing verbatim: no quotes, no code, no exact output, no file contents. Small details may be lost, and "
-                  "that is wanted. There are two people, the owner and the builder. Call them that and use no names. "
-                  "Under 220 words, plain sentences.")
-        got = claude(run, "memory", "haiku", prompt, cwd=root, tools="",
-                     system="You compress a working record into a lossy memory.")
-        life.remember(pname, got["text"].strip())
-        S["compressed_upto"] = S["records"][-1]["turn"] if S["records"] else 0
-        run.log("memory", words=len(got["text"].split()))
+    def stance() -> float:
+        return clip(0.6 * S["mood"] + 0.4 * life.d("bold"))
 
-    def dream():
-        """Sleep is the only time he is not looking at the project, which is why
-        it is the only time an idea arrives that is not a variation on what is
-        already there. The life supplies the distance and the shape to borrow."""
-        prompt = ("Your last days:\n\n" + life.recent(10, 700) +
-                  "\n\nWhat you remember of the project:\n" + life.memory(pname) + "\n" + "\n".join(S["notes"][-3:]) +
-                  ("\n\nWhat it printed when the harness last ran it:\n" + S["last_show"][:900] if S["last_show"] else "") +
-                  "\n\nRequirements so far:\n" + "\n".join(f"- {q['text'][:120]}" for q in S["reqs"]) +
-                  "\n\nIdeas you have already had, so do not repeat them:\n"
-                  + "\n".join(f"- {i['text'][:120]}" for i in S["ideas"]) +
-                  "\n\nYou are half asleep and you are not thinking about the project. Go back through the days instead: the "
-                  "people, the errands, the arguments, the things that would not work. Take one of those and say what shape "
-                  "the trouble in it had. Something waited on someone who never answered. Something was measured twice and "
-                  "the ends disagreed. A thing was easy to do and impossible to undo. A warning arrived after it mattered. "
-                  "Then find where this project has that same shape, and say what it could become because of it.\n\n"
-                  "What you bring back is the mapping, not the scenery. One or two, no more. Each must be something you would "
-                  "notice when using the thing, small enough to build in one go, with how you would see it works, and in "
-                  "came_from name the thing in your life and the shape they share. A variation on what is already there is "
-                  "worth nothing to you. Do not hold back because of a constraint in the charter. Those are yours to change.")
-        try:
-            got = claude(run, "dream", a.regent_model, prompt, cwd=root, tools="", system=system,
-                         schema=IDEAS)["data"].get("ideas", [])
-            for g in got[:2]:
-                S["ideas"].append({**g, "status": "pending", "label": f"I{len(S['ideas']) + 1}"})
-            S["counts"]["dreams"] += 1
-            run.log("dream", ideas=got[:2])
-        except Exception as e:   # a dream that fails costs nothing
-            run.log("dream_failed", error=str(e)[:200])
-
-    def step_back(turn: int):
-        sit = run.rows("sitting")
-        view = {"turns": turn, "read_modes": {k: sum(1 for x in sit if x.get("read_mode") == k)
-                                              for k in ("full", "skim", "glance")},
-                "days_with_no_time": S["counts"]["waved"], "times_you_looked": S["counts"]["looks"],
-                "trust_in_the_builder": round(S["trust"], 2), "directed": S["counts"]["direct"],
-                "challenged": S["counts"]["challenge"], "constrained": S["counts"]["constrain"],
-                "checks_failed": sum(1 for x in run.rows("check") if not x["ok"]),
-                "requirements": len(S["reqs"]), "requirements_built": sum(1 for q in S["reqs"] if q["status"] == "built"),
-                "requirements_per_turn": [len(x.get("new") or []) for x in sit],
-                "ideas_from_dreams": len(S["ideas"]), "ideas_taken": sum(1 for i in S["ideas"] if i["status"] == "taken"),
-                "ideas_declined": [{"idea": i["text"][:80], "why": i.get("why", "")}
-                                   for i in S["ideas"] if i["status"] == "declined"],
-                "limits_you_changed": S["amended"], "fresh_builder_sessions": S["counts"]["fresh"],
-                "builder_minutes": round(S["claude_secs"] / 60, 1), "your_minutes": round(S["blocking"] / 60, 1),
-                "ways_now": S["ways"]}
-        prompt = ("Step back from the project and look at how the work itself is going. These numbers were counted by the "
-                  "harness, not recalled:\n\n" + json.dumps(view, indent=1, ensure_ascii=False) +
-                  "\n\nSay what you notice about how you and the builder are working. Then give your ways of working: standing "
-                  "practices in your own words that the builder will be held to and that you will hold yourself to, five at "
-                  "most, replacing the list above. A way changes how the work is done. It never crosses a refusal. Look hard "
-                  "at the ideas you declined: if you keep turning your own ideas down, say why, and whether that is serving "
-                  "you. If you think the charter itself has something wrong, say it as a note for the human.")
-        t = time.time()
-        got = claude(run, "step_back", a.regent_model, prompt, cwd=root, tools="", system=system, schema=STEPBACK)["data"]
-        S["blocking"] += time.time() - t
-        S["ways"] = got["ways"][:5]
-        S["human_notes"].extend(got["notes_for_the_human"])
-        S["counts"]["step_backs"] += 1
-        run.log("step_back", view=view, observations=got["observations"], ways=S["ways"], notes=got["notes_for_the_human"])
-        run.say(f"   (stepped back: {len(got['observations'])} observations, {len(S['ways'])} ways)")
-
-    def rest(turn: int, final: bool = False):
-        S["counts"]["rests"] += 1
-        S["rests"] += 1
-        S["since_rest"] = 0
-        t = time.time()
-        jobs = [threading.Thread(target=compress)]
-        if not final and not pending():
-            jobs.append(threading.Thread(target=dream))
-        for j in jobs:
-            j.start()
-        for j in jobs:
-            j.join()
-        if final or S["rests"] % 3 == 0:
-            step_back(turn)
-        S["blocking"] += time.time() - t
-        if not final:
-            S["session"], S["started"] = str(uuid.uuid4()), False
-            S["counts"]["fresh"] += 1
-            S["handover"] = ("You are picking this project up. This is what is remembered of the work so far, and it is a "
-                             "memory, so parts are missing:\n\n" + life.memory(pname) +
-                             "\n\nRead the files in this folder before you change anything.\n\n")
-        run.say(f"   (rested: memory is {len(life.memory(pname).split())} words, {len(pending())} ideas waiting)")
-
-    def took_plant() -> str:
-        if not plant_file.exists():
-            return ""
-        lines = [x for x in plant_file.read_text().splitlines() if x.strip()]
-        if not lines:
-            return ""
-        plant_file.write_text("\n".join(lines[1:]) + ("\n" if lines[1:] else ""))
-        run.log("plant", human_only=True)
-        return lines[0]
-
-    run.log("start", project=pname, owner=S["owner"], turns=turns, seed=a.seed, resumed=not fresh)
-    run.say(f"regent: {life.root.name} on {project} for {turns} turns, day {life.days()}, run {root}")
-    guard = 0
-    while S["turn"] < turns and guard < turns * 3:
-        guard += 1
-        met = took_plant()
-        time_left = rng.choices(["none", "a few minutes", "an hour", "an evening"], [1, 3, 4, 2])[0]
-        valence = round(rng.uniform(-0.6, 0.6), 2)
-        S["stance"] = max(-1, min(1, 0.7 * S["stance"] + 0.3 * (valence * 0.5 + life.d("bold") * 0.3)))
-        if S["turn"] == 0 or (S["last_check"] and not S["check_ok"]):
-            time_left = "an hour" if time_left in ("none", "a few minutes") else time_left
-        if time_left == "none":
-            S["counts"]["waved"] += 1
-            day = life.add_day("No time for the project today.")
-            run.log("day", n=day, time="none")
-            run.say(f"day {day}: no time for the project. Nothing sent, nothing spent.")
-            continue
+    def sitting(day: int, rng: random.Random, met: str) -> str:
         turn = S["turn"] = S["turn"] + 1
-        S["since_rest"] += 1
-        mode = {"a few minutes": "glance", "an hour": "skim", "an evening": "full"}[time_left]
+        failing = bool(S["last_check"]) and not S["check_ok"]
+        # How long he has is a draw. Thoroughness stretches it, trust in the builder shortens it.
         lean = life.d("thorough") * 0.5 - (S["trust"] - 0.5)
-        # Thorough reads more, trust buys attention off. Either way it moves to the middle.
-        if (lean > 0.3 and mode == "glance") or (lean < -0.2 and mode == "full"):
-            mode = "skim"
-        if turn <= 2 or (S["last_check"] and not S["check_ok"]):
-            mode = "full"
-        # He tries it himself now and then, never often. Reading along behind the
-        # builder produces small variations, and those are worth nothing to him.
-        look = (time_left != "a few minutes" and bool(S["last_reply"] or S["existing"])
-                and turn - S["last_look"] >= 3 and (S["wants_look"] or S["trust"] < 0.4 or rng.random() < 0.25))
+        minutes = rng.lognormvariate(3.4 + 0.8 * lean, 0.9)
+        if not S["last_reply"] or failing:
+            minutes = max(minutes, 60)
+        span = "a few minutes" if minutes < 12 else "about an hour" if minutes < 90 else "an evening"
+        # He tries it himself now and then. Reading along behind the builder produces small variations, and those are
+        # worth nothing to him, so the pull is weak, grows with the turns since he last looked, and distrust feeds it.
+        pull = 0.12 + 0.15 * life.d("thorough") + 0.3 * S["wants_look"] + max(0.0, 0.5 - S["trust"])
+        look = minutes >= 12 and bool(S["last_reply"] or S["existing"]) and rng.random() < pull * (1 - math.exp(-S["since_look"] / 2))
 
         said = ""
         if inbox.exists() and inbox.read_text().strip():
@@ -565,69 +618,69 @@ def run_cmd(a):
             run.log("human_said", text=said)
         pend = pending()
         ctx = (
-            f"THE CHARTER\n{charter_text}\n\n"
+            f"THE CHARTER\n{S['charter']}\n\n"
             + ("LIMITS YOU HAVE ALREADY CHANGED\n" + "\n".join(
                 f"- was: {x['constraint']} / now: {x['now']} / because: {x['why']}" for x in S["amended"]) + "\n\n"
                if S["amended"] else "")
             + (f"THE PERSON WHO GAVE YOU THE CHARTER HAS LEFT YOU A NOTE\n{said}\n\n" if said else "")
-            + f"TODAY you have {time_left} for the project. The day has gone "
-            + ("well" if valence > 0.15 else "badly" if valence < -0.15 else "evenly")
+            + f"TODAY you have {span} for the project. The day is going "
+            + ("well" if S["mood"] > 0.15 else "badly" if S["mood"] < -0.15 else "evenly")
             + (f". Today you came across this: {met}" if met else "")
-            + f"\nYour stance today is {S['stance']:+.2f} on a scale from -1, cautious and wanting proof, to +1, wanting "
-            "more from it.\n\n"
+            + f"\nYour stance today is {stance():+.2f} on a scale from -1, cautious and wanting proof, to +1, wanting more "
+            "from it.\n\n"
             f"YOUR LAST TWO DAYS\n{life.recent(2, 500)}\n\n"
-            "WHAT YOU REMEMBER OF THE PROJECT (a memory, so parts are missing)\n" + (life.memory(pname) or "nothing yet")
+            "WHAT YOU REMEMBER OF THE PROJECT (a memory, so parts are missing)\n" + (life.get("memory", pname) or "nothing yet")
             + "\n" + "\n".join(f"- {n}" for n in S["notes"][-3:]) + "\n\n"
             + ("YOUR WAYS OF WORKING\n" + "\n".join(f"- {w}" for w in S["ways"]) + "\n\n" if S["ways"] else "")
             + "REQUIREMENTS SO FAR. Put the id of any you have now seen working in requirements_built.\n"
             + ("\n".join(f"- {q['id']} [{q['status']}] {q['text']}" for q in S["reqs"]) or "- none yet") + "\n\n"
-            + ("IDEAS THAT CAME TO YOU IN YOUR SLEEP AND ARE STILL OPEN. Take one as a new requirement and name its label, "
-               "or decline it with your reason. A starting constraint in the way is not a reason. Change the constraint.\n"
-               + "\n".join(f"- {i['label']}: {i['text']} (you would check: {i['test']}) (it came from: {i['came_from']})"
-                           for i in pend) + "\n\n" if pend else "")
-            + (f"WHAT THE BUILDER SAID BACK (you gave it a {mode} read)\n{cut(S['last_reply'], mode)}\n\n"
-               if S["last_reply"] else
+            + ("YOU WOKE WITH THESE, AND THEY ARE STILL OPEN. You do not know where they came from. Take one as a new "
+               "requirement, putting its label in that requirement's idea field, or decline it by label in ideas_declined "
+               "with your reason. A starting constraint in the way is not a reason. Change the constraint.\n"
+               + "\n".join(f"- {i['label']}: {i['text']} (you would check: {i['test']})" for i in pend) + "\n\n" if pend else "")
+            + (f"WHAT THE BUILDER SAID BACK\n{cut(S['last_reply'], minutes)}\n\n" if S["last_reply"] else
                ("THIS PROJECT ALREADY EXISTS. Nothing has been said yet. Try it first.\n\n" if S["existing"] else
                 "NOTHING HAS BEEN BUILT YET. This is your first message. Say what you want built and the limits.\n\n"))
             + (f"WHAT HAPPENED WHEN THE HARNESS RAN THE CHECK JUST NOW ({'passed' if S['check_ok'] else 'FAILED'})\n"
                f"{S['last_check']}\n\n" if S["last_check"] else "")
-            + (f"WHAT THE THING PRINTED WHEN THE HARNESS RAN IT JUST NOW\n"
-               f"{S['last_show'] if mode == 'full' else cut(S['last_show'], 'skim')}\n\n" if S["last_show"] else "")
+            + (f"WHAT THE THING PRINTED WHEN THE HARNESS RAN IT JUST NOW\n{cut(S['last_show'], minutes)}\n\n"
+               if S["last_show"] else "")
             + (("TODAY YOU HAVE A FEW MINUTES TO TRY IT YOURSELF. You are in the project folder. Run the thing on something, "
                 "and read what is written for people: the README, the usage text, the sample files. You can run these: "
                 + ", ".join(tool_lines) + ". Do not read the code, and do not go looking through files. If you want the code "
                 "examined or awkward cases tried, ask for that in your message and the builder will put a subagent on it. "
                 "Two or three things at most, then stop. Put what you ran in looked_at and whether it matched what you were "
                 "told in look_matched.\n\n") if look else "")
-            + f"This is turn {turn} of {turns}. So far you have directed {S['counts']['direct']} times, challenged "
-            f"{S['counts']['challenge']} and constrained {S['counts']['constrain']}. An owner who only directs is a ticket "
-            "queue. Write your message to the builder. Up to five new requirements may ride in it together. "
-            "In journal, write today's entry the way you write for yourself: fragments, names, times, 40 to 120 words, "
-            "mostly not about the project."
+            + f"This is day {S['day_i'] + 1} of about {days}. So far you have directed {S['counts']['direct']} times, "
+            f"challenged {S['counts']['challenge']} and constrained {S['counts']['constrain']}. An owner who only directs is "
+            "a ticket queue. Write your message to the builder. A few new requirements may ride in it together; leave idea "
+            "empty on one that is simply yours."
         )
         t = time.time()
         d = claude(run, "regent", a.regent_model, ctx, cwd=project if look else root,
-                   tools="Read,Grep,Glob,Bash" if look else "",
-                   allowed=("Read,Grep,Glob," + his_bash) if look else None,
+                   tools="Read,Grep,Glob,Bash" if look else "", allowed=("Read,Grep,Glob," + his_bash) if look else None,
                    usd=SPOT_USD if look else None, system=system, schema=DECISION, who=life.root.name)["data"]
         S["blocking"] += time.time() - t
+        S["since_look"] += 1
         if look:
-            S["last_look"] = turn
+            S["since_look"] = 0
             S["counts"]["looks"] += 1
-            S["trust"] = max(0.0, min(1.0, S["trust"] + (0.08 if d["look_matched"] else -0.25)))
+            S["trust"] = clip(S["trust"] + (0.08 if d["look_matched"] else -0.25), 0, 1)
             run.log("look", ran=d["looked_at"], matched=d["look_matched"], trust=round(S["trust"], 2))
         S["wants_look"] = bool(d["wants_to_look"])
-        for q in d["requirements_new"][:5]:
+        for q in d["requirements_new"]:
             rid = f"req-{len(S['reqs']) + 1:02d}"
-            origin = next((i for i in pend if i["label"].lower() == (q.get("idea") or "").strip().lower()), None)
+            origin = next((i for i in pend if i["label"].lower() == q["idea"].strip().lower()), None)
             S["reqs"].append({"id": rid, "status": "open", "turn": turn, "from_dream": bool(origin),
                               "text": q["text"], "test": q["test"]})
             if origin:
                 origin["status"], origin["req"] = "taken", rid
+                life.judged(pname, "took", origin["text"], "")
         for dec in d["ideas_declined"]:
             for i in pend:
                 if i["status"] == "pending" and re.search(rf"\b{i['label']}\b", dec["idea"], re.I):
                     i["status"], i["why"] = "declined", dec["why"]
+                    life.judged(pname, "turned down", i["text"], dec["why"])
         for rid in d["requirements_built"]:
             for q in S["reqs"]:
                 if q["id"] == rid:
@@ -642,28 +695,29 @@ def run_cmd(a):
         S["counts"]["direct"] += 1
         S["counts"]["challenge"] += int(d["challenged"])
         S["counts"]["constrain"] += int(d["constrained"])
-        day = life.add_day(d["journal"])
         message = d["message"]
         if d["requirements_new"]:
             message += "\n\nNew requirements, build them together:\n" + "\n".join(
-                f"- {q['text']} (I will check: {q['test']})" for q in d["requirements_new"][:5])
+                f"- {q['text']} (I will check: {q['test']})" for q in d["requirements_new"])
         if S["ways"]:
             message += "\n\nMy standing ways of working, which still hold:\n" + "\n".join(f"- {w}" for w in S["ways"])
-        run.log("sitting", n=turn, day=day, read_mode=mode, look=look, verdict=d["verdict"], message=message,
+        run.log("sitting", n=turn, day=day, minutes=round(minutes), look=look, verdict=d["verdict"], message=message,
                 stance_line=d["stance_line"], challenged=d["challenged"], constrained=d["constrained"],
                 new=[q["text"] for q in d["requirements_new"]], built=d["requirements_built"],
-                declined=d["ideas_declined"], constraints_changed=d["constraints_changed"],
-                ask_the_human=d["ask_the_human"], done=d["done"])
-        run.say(f"turn {turn} (day {day}, {mode}{', tried it' if look else ''}, {d['verdict']}): {d['stance_line'][:110]}")
+                declined=d["ideas_declined"], constraints_changed=d["constraints_changed"], done=d["done"])
+        run.say(f"sitting {turn} (day {day}, {round(minutes)} min{', tried it' if look else ''}, {d['verdict']}): "
+                f"{d['stance_line'][:110]}")
         run.say(f"   {life.root.name} > {message[:160].replace(chr(10), ' ')}")
+        quiet = not (d["requirements_new"] or pend or d["challenged"] or d["constrained"]) and d["verdict"] == "accept"
+        S["dry"] = S["dry"] + 1 if quiet else 0
 
-        S["dry"] = 0 if (d["requirements_new"] or pend or d["challenged"] or d["constrained"]) else S["dry"] + 1
         out = claude(run, "claude", a.model, S["handover"] + message, cwd=project, append=norms(),
                      session=S["session"], resume=S["started"], effort=a.effort, denied=deny,
                      settings=["--strict-mcp-config", "--setting-sources", "project"],
                      allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
         S["handover"], S["started"] = "", True
         S["session"] = out["session"] or S["session"]
+        S["session_turns"] += 1
         S["claude_secs"] += out["seconds"]
         S["last_reply"] = out["text"]
         if out["denials"]:
@@ -674,58 +728,215 @@ def run_cmd(a):
             run.say(f"   check {'passed' if S['check_ok'] else 'FAILED'}: "
                     f"{S['last_check'].splitlines()[-1] if S['last_check'] else ''}")
         if show_cmd:
-            S["last_show"], _ = shell(show_cmd, project, a.timeout, 40)
-            run.log("show", tail=S["last_show"][-1200:])
+            S["last_show"], _ = shell(show_cmd, project, a.timeout, 60)
+        S["built_once"] = S["built_once"] or S["check_ok"] or not check_cmd
         S["records"].append({"turn": turn, "message": message, "reply": S["last_reply"], "check_ok": S["check_ok"],
                              "new": [q["text"][:100] for q in d["requirements_new"]],
                              "declined": [x["idea"][:60] for x in d["ideas_declined"]],
                              "amended": [x["now"][:80] for x in d["constraints_changed"]]})
         run.save(S)
-        if S["dry"] >= 3 and d["verdict"] == "accept":
-            run.log("stop", reason="he is content and three turns running added nothing")
-            break
-        if S["since_rest"] >= REST_EVERY and S["turn"] < turns:
-            rest(turn)
-            run.save(S)
+        return f"{d['stance_line']} {d['notes_to_self']}"
 
-    rest(S["turn"], final=True)
+    def write_day(rng: random.Random, seen: list[str], met: str):
+        """The day is written by someone who is not him, from what the dice rolled.
+        A model writing a life unaided writes the same mild day forever."""
+        rolled = [f"- This happens: {x}" for x in rng.sample(happenings, min(2, len(happenings)))]
+        if met:
+            rolled.append(f"- They come across this: {met}")
+        text = ask(run, "day", "haiku", DAY_P.format(
+            words=f"{int(clip(rng.gauss(90, 30), 40, 170))}", bible=life.bible[:6000], recent=life.recent(3, 220, tail=True),
+            valence="well" if S["mood"] > 0.15 else "badly" if S["mood"] < -0.15 else "evenly", rolled="\n".join(rolled),
+            project="\n".join(f"- {x}" for x in seen) or "No time for it today. It is not in the entry."))
+        run.log("day", n=life.add_day(text), sittings=len(seen), mood=round(S["mood"], 2))
+
+    def consolidate():
+        """The forgetting. What he holds of the project is rewritten as a memory, and parts of it go."""
+        raw = "\n\n".join(
+            f"Turn {r['turn']}. He said: {r['message'][:500]}\nThe builder said: {r['reply'][:700]}\n"
+            f"The check {'passed' if r['check_ok'] else 'failed'}. New requirements: {r['new']}. "
+            f"Ideas declined: {r['declined']}. Limits changed: {r['amended']}."
+            for r in S["records"] if r["turn"] > S["compressed_upto"])
+        text = ask(run, "memory", "haiku",
+                   "What was remembered before:\n" + (life.get("memory", pname) or "nothing") + "\n\nWhat has happened "
+                   "since:\n" + raw + "\n\nRewrite all of it as what a person would remember of this project a few days "
+                   "later. Keep the events in order, what was asked for, what got built, what failed, what was decided, what "
+                   "is still open. Keep nothing verbatim: no quotes, no code, no exact output. Small details may be lost, and "
+                   "that is wanted. There are two people, the owner and the builder. Call them that and use no names. Under "
+                   "220 words, plain sentences.", system="You compress a working record into a lossy memory.")
+        life.put("memory", pname, text)
+        S["compressed_upto"] = S["records"][-1]["turn"]
+
+    def spoon(rng: random.Random):
+        """Saturate, drift, catch, sift. None of it is him, and he is asked nothing."""
+        parts = ([ch.get("intent", "")] + [q["text"] for q in S["reqs"]] + S["notes"][-4:]
+                 + [s for s in re.split(r"(?<=\.)\s+", life.get("memory", pname)) if len(s) > 30]
+                 + ([f"what it printed last: {S['last_show'][-500:]}"] if S["last_show"] else []))
+        P = {f"p{i + 1}": t.strip() for i, t in enumerate(parts) if t.strip()}
+        ptxt = "\n".join(f"{k}: {v[:400]}" for k, v in P.items())
+        sat = ask(run, "saturate", "haiku", SATURATE_P.format(project=ptxt, life=life.recent(8, 500)), MOTIFS)
+        motifs = "\n".join(f"- {m}" for k in ("motifs", "tensions", "questions") for m in sat[k])
+        lean = f"{'opportunity' if stance() > 0 else 'risk'}-weighted {stance():+.2f}"
+        # Drift runs more than once, on different models over different days, because one sampler has one groove.
+        passes = [(m, int(clip(rng.gauss(16, 4), 8, 26)), life.sample(rng, int(clip(rng.gauss(10, 3), 5, 18))),
+                   random.Random(rng.random())) for m in ("sonnet", "haiku")]
+        holding: list[dict] = []
+
+        def drift(model, target, days_txt, r):
+            got = ask(run, "drift", model, DRIFT_P.format(target=target, motifs=motifs, project=ptxt, stance=lean,
+                                                           bible=life.bible[:6000], days=days_txt), LINKS)["links"]
+            caught = catch(got, set(P), r)
+            run.log("drift", model=model, asked=target, written=len(got), caught=len(caught))
+            holding.extend(caught)
+        jobs = [threading.Thread(target=drift, args=p) for p in passes]
+        for j in jobs:
+            j.start()
+        for j in jobs:
+            j.join()
+        rng.shuffle(holding)   # Sift must not be able to tell the passes apart
+        S["counts"]["cycles"] += 1
+        if not holding:
+            return run.log("spoon", motifs=len(sat["motifs"]), caught=0, kept=0)
+        got = ask(run, "sift", "sonnet", SIFT_P.format(
+            holding="\n".join(f"{i}. {ln['text']}" + (f" Mechanism: {ln['mechanism']}" if ln["mechanism"] else "")
+                              for i, ln in enumerate(holding)),
+            intent=ch.get("intent", ""), refusals=ch.get("refusals", ""), taste=life.taste(), keep=1 + min(3, poisson(rng, 1.3)),
+            built="\n".join(f"- {q['text'][:160]}" for q in S["reqs"]) or "- nothing yet"), SIFTED)["candidates"]
+        for g in got:
+            src = [holding[i] for i in g["from_indexes"] if 0 <= i < len(holding)]
+            S["ideas"].append({"text": g["text"], "test": g["test"], "status": "pending", "label": f"I{len(S['ideas']) + 1}",
+                               "might_fail": g["why_it_might_fail"],
+                               "came_from": " / ".join(f"{x['text'][:220]} [{x['other']}]" for x in src)})
+        run.log("spoon", motifs=sat, caught=len(holding), kept=len(got), candidates=got,
+                links=[{k: ln[k] for k in ("kind", "text", "anchors", "other", "mechanism")} for ln in holding])
+        run.say(f"   (the spoon fell: {len(holding)} links caught, {len(got)} kept for the morning)")
+
+    def step_back():
+        sit = run.rows("sitting")
+        view = {"sittings": S["turn"], "days": S["day_i"] + 1, "minutes_you_gave_each": [x.get("minutes") for x in sit],
+                "days_with_no_time": S["counts"]["empty_days"], "times_you_tried_it": S["counts"]["looks"],
+                "trust_in_the_builder": round(S["trust"], 2), "directed": S["counts"]["direct"],
+                "challenged": S["counts"]["challenge"], "constrained": S["counts"]["constrain"],
+                "checks_failed": sum(1 for x in run.rows("check") if not x["ok"]),
+                "requirements": len(S["reqs"]), "requirements_built": sum(1 for q in S["reqs"] if q["status"] == "built"),
+                "requirements_per_sitting": [len(x.get("new") or []) for x in sit],
+                "ideas_you_woke_with": len(S["ideas"]), "ideas_taken": sum(1 for i in S["ideas"] if i["status"] == "taken"),
+                "ideas_declined": [{"idea": i["text"][:80], "why": i.get("why", "")}
+                                   for i in S["ideas"] if i["status"] == "declined"],
+                "limits_you_changed": S["amended"], "fresh_builder_sessions": S["counts"]["fresh"],
+                "builder_minutes": round(S["claude_secs"] / 60, 1), "your_minutes": round(S["blocking"] / 60, 1),
+                "ways_now": S["ways"]}
+        t = time.time()
+        got = ask(run, "step_back", a.regent_model,
+                  "Step back from the project and look at how the work itself is going. These numbers were counted by the "
+                  "harness, not recalled:\n\n" + json.dumps(view, indent=1, ensure_ascii=False) +
+                  "\n\nSay what you notice about how you and the builder are working. Then give your ways of working: standing "
+                  "practices in your own words that the builder will be held to and that you will hold yourself to, five at "
+                  "most, replacing the list above. A way changes how the work is done. It never crosses a refusal. Look hard "
+                  "at the ideas you declined: if you keep turning them down, say why, and whether that is serving you. If you "
+                  "think the charter itself has something wrong, say it as a note for the human.", STEPBACK, system)
+        S["blocking"] += time.time() - t
+        S["ways"] = got["ways"][:5]
+        S["human_notes"].extend(got["notes_for_the_human"])
+        S["counts"]["step_backs"] += 1
+        S["since_step"] = 0
+        run.log("step_back", view=view, observations=got["observations"], ways=S["ways"], notes=got["notes_for_the_human"])
+        run.say(f"   (stepped back: {len(got['observations'])} observations, {len(S['ways'])} ways)")
+
+    def tonight(name: str, fn, *args) -> threading.Thread:
+        def go():
+            try:
+                fn(*args)
+            except Exception as e:   # a night that fails costs nothing and must not end the run
+                run.log(f"{name}_failed", error=str(e)[:300])
+                run.say(f"   ({name} failed: {str(e)[:120]})")
+        return threading.Thread(target=go)
+
+    run.log("start", project=pname, owner=S["owner"], days=days, turns_per_day=tpd, seed=a.seed, resumed=not fresh)
+    run.say(f"regent: {life.root.name} on {project}, {days} days at about {tpd:g} sittings a day, run {root}")
+    while S["day_i"] < days:
+        rng = random.Random(f"{a.seed}-{S['day_i']}")
+        day = life.days() + 1
+        S["mood"] = clip(0.6 * S["mood"] + rng.gauss(0, 0.35))
+        failing = bool(S["last_check"]) and not S["check_ok"]
+        # A failed check pulls him back. A thing he is content with, that has gone quiet, lets him drift away.
+        n = poisson(rng, tpd * (1.6 if failing else 1.0) * 0.6 ** S["dry"])
+        n = max(n, 1) if S["turn"] == 0 else n
+        met = ""
+        if plant_file.exists() and (lines := [x for x in plant_file.read_text().splitlines() if x.strip()]):
+            met = lines[0]
+            plant_file.write_text("\n".join(lines[1:]) + "\n")
+            run.log("plant", human_only=True)
+        if not n:
+            S["counts"]["empty_days"] += 1
+            run.say(f"day {day}: no time for the project.")
+        seen = [sitting(day, rng, met if k == 0 else "") for k in range(n)]
+
+        # Night. The day gets written, the project is half forgotten, and sometimes the spoon falls.
+        t = time.time()
+        S["since_dream"] += 1
+        S["since_step"] += 1
+        last = S["day_i"] + 1 >= days
+        jobs = [tonight("day", write_day, rng, seen, met)]
+        if any(r["turn"] > S["compressed_upto"] for r in S["records"]):
+            jobs.append(tonight("memory", consolidate))
+        if S["built_once"] and not pending() and not last and due(rng, S["since_dream"], a.dream_gap * (1 - 0.5 * life.d("curious"))):
+            S["since_dream"] = 0
+            jobs.append(tonight("spoon", spoon, random.Random(rng.random())))
+        for j in jobs:
+            j.start()
+        for j in jobs:
+            j.join()
+        if S["turn"] and (last or due(rng, S["since_step"], 7 * (1 + 0.4 * life.d("patient")))):
+            tonight("step_back", step_back).run()
+        # A builder's session grows stale with every turn in it, so the odds of a fresh pair of hands grow too.
+        if not last and S["started"] and life.get("memory", pname) and due(rng, S["session_turns"], 9):
+            S["session"], S["started"], S["session_turns"] = str(uuid.uuid4()), False, 0
+            S["counts"]["fresh"] += 1
+            S["handover"] = ("You are picking this project up. This is what is remembered of the work so far, and it is a "
+                             "memory, so parts are missing:\n\n" + life.get("memory", pname) +
+                             "\n\nRead the files in this folder before you change anything.\n\n")
+            run.say("   (a fresh builder picks it up in the morning, from his memory of it)")
+        S["blocking"] += time.time() - t
+        S["day_i"] += 1
+        run.save(S)
+
     S["finished"] = True
     run.save(S)
     wall = time.time() - run.t0
     calls = run.rows("call")
-    spend_c = sum(x.get("cost", 0) for x in calls if x["role"] == "claude")
-    spend_r = sum(x.get("cost", 0) for x in calls if x["role"] != "claude")
+    spend = {k: sum(x.get("cost", 0) for x in calls if (x["role"] == "claude") == (k == "builder")) for k in ("builder", "owner")}
+    night_usd = sum(x.get("cost", 0) for x in calls if x["role"] in ("saturate", "drift", "sift"))
     built = sum(1 for q in S["reqs"] if q["status"] == "built")
-    c = S["counts"]
-    spent = (f"{S['turn']} turns over {life.days()} days of his life, in {wall / 60:.1f} minutes. The builder worked for "
-             f"{S['claude_secs'] / 60:.1f} of them and the owner held it up for {S['blocking'] / 60:.1f}. "
-             f"Spend: builder ${spend_c:.2f}, owner ${spend_r:.2f}. The check {'passes' if S['check_ok'] else 'FAILS'}.")
-    did = (f"He directed {c['direct']} times, challenged {c['challenge']}, constrained {c['constrain']}, tried it himself "
-           f"{c['looks']} times, had {c['waved']} days with no time, rested {c['rests']}, dreamed {c['dreams']} and "
-           f"stepped back {c['step_backs']}. Trust in the builder ended at {S['trust']:.2f}.")
     dreamt = sum(1 for q in S["reqs"] if q["from_dream"])
+    c = S["counts"]
+    spent = (f"{S['turn']} sittings over {days} days of his life, in {wall / 60:.1f} minutes. The builder worked for "
+             f"{S['claude_secs'] / 60:.1f} of them. Spend: builder ${spend['builder']:.2f}, owner and his nights "
+             f"${spend['owner']:.2f}, of which the spoon cycles were ${night_usd:.2f}. The check "
+             f"{'passes' if S['check_ok'] else 'FAILS'}.")
+    did = (f"He directed {c['direct']} times, challenged {c['challenge']}, constrained {c['constrain']}, tried it himself "
+           f"{c['looks']} times and had {c['empty_days']} days with no time for it. The spoon fell on {c['cycles']} nights, "
+           f"he stepped back {c['step_backs']} times, and a fresh builder picked it up {c['fresh']} times. Trust in the "
+           f"builder ended at {S['trust']:.2f}.")
     lines = [f"# {project.name}", "", spent, "", did, "",
-             f"## Requirements: {built} built of {len(S['reqs'])}, {dreamt} from dreams", ""]
-    lines += [f"- {q['id']} [{q['status']}] turn {q['turn']}{' (dream)' if q['from_dream'] else ''}: {q['text']}"
+             f"## Requirements: {built} built of {len(S['reqs'])}, {dreamt} from the nights", ""]
+    lines += [f"- {q['id']} [{q['status']}] sitting {q['turn']}{' (night)' if q['from_dream'] else ''}: {q['text']}"
               for q in S["reqs"]] or ["- none"]
-    lines += ["", "## What he dreamed, and where it came from", ""] + (
-        [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}"
-         + (f"\n  he declined it: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- none"])
+    lines += ["", "## What the nights brought, and what he did with it", ""] + (
+        [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}\n  it might fail because: {i.get('might_fail', '')}"
+         + (f"\n  he declined it: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- nothing"])
     lines += ["", "## Limits he changed", ""] + (
-        [f"- turn {x['turn']}: was \"{x['constraint']}\", now \"{x['now']}\". Why: {x['why']}" for x in S["amended"]]
+        [f"- sitting {x['turn']}: was \"{x['constraint']}\", now \"{x['now']}\". Why: {x['why']}" for x in S["amended"]]
         or ["- none"])
-    lines += ["", "## Questions for you", ""] + (
-        [f"- turn {e['turn']}: {e['question']}" for e in S["escalations"]] or ["- none"])
+    lines += ["", "## Questions for you", ""] + ([f"- sitting {e['turn']}: {e['question']}" for e in S["escalations"]] or ["- none"])
     lines += ["", "## His ways of working", ""] + ([f"- {w}" for w in S["ways"]] or ["- none"])
     lines += ["", "## His notes for you", ""] + ([f"- {n}" for n in S["human_notes"]] or ["- none"])
-    lines += ["", "## What he remembers of the project", "", life.memory(pname)]
+    lines += ["", "## What he remembers of the project", "", life.get("memory", pname)]
     (root / "digest.md").write_text("\n".join(lines) + "\n")
-    run.log("summary", turns=S["turn"], spend_claude=round(spend_c, 2), spend_regent=round(spend_r, 2),
-            check_ok=S["check_ok"], trust=round(S["trust"], 2), requirements=len(S["reqs"]), built=built, counts=c)
-    run.say(f"stopped after {S['turn']} turns. wall {wall / 60:.1f} min, builder {S['claude_secs'] / 60:.1f}, owner in the "
-            f"way {S['blocking'] / 60:.1f}. spend ${spend_c + spend_r:.2f}. check "
-            f"{'passed' if S['check_ok'] else 'FAILED'}. requirements {built} of {len(S['reqs'])}, "
-            f"{dreamt} from dreams. limits changed {len(S['amended'])}.")
+    run.log("summary", sittings=S["turn"], days=days, spend=spend, spoon_usd=round(night_usd, 2), check_ok=S["check_ok"],
+            trust=round(S["trust"], 2), requirements=len(S["reqs"]), built=built, from_nights=dreamt, counts=c)
+    run.say(f"stopped after {S['turn']} sittings in {days} days. wall {wall / 60:.1f} min. spend ${sum(spend.values()):.2f} "
+            f"(spoon ${night_usd:.2f}). check {'passed' if S['check_ok'] else 'FAILED'}. requirements {built} of "
+            f"{len(S['reqs'])}, {dreamt} from the nights. limits changed {len(S['amended'])}.")
     run.say(f"digest: {root / 'digest.md'}")
     life.close()
     run.close()
@@ -738,15 +949,24 @@ def main():
     r.add_argument("charter", nargs="?", help="default: <project>/.regent/charter.md")
     r.add_argument("--project", required=True)
     r.add_argument("--owner", default="piotr-mahon", help="an owner name or a path to an owner folder")
+    r.add_argument("--days", type=int, default=None, help="how many days of his life the run lasts. Charter: 'days:'")
+    r.add_argument("--turns-per-day", type=float, default=None,
+                   help="mean sittings a day, the mean of a Poisson draw, so 0.5 is every other day. Charter: 'turns_per_day:'")
+    r.add_argument("--dream-gap", type=float, default=3.0, help="mean nights between spoon cycles. His curiosity shortens it")
     r.add_argument("--runs", default=None, help=f"where runs live. Default {HOME / 'runs'}")
     r.add_argument("--new", action="store_true", help="start a new run instead of resuming the last one")
-    r.add_argument("--turns", type=int, default=None, help="the budget, a count of sittings. The charter's Budget sets it")
     r.add_argument("--seed", type=int, default=1)
-    r.add_argument("--model", default="sonnet")
+    r.add_argument("--model", default="sonnet", help="the builder")
     r.add_argument("--regent-model", default="sonnet")
     r.add_argument("--effort", default="low")
     r.add_argument("--timeout", type=int, default=600, help="seconds for the charter's Check and Show commands")
     r.add_argument("--plant", action="append", default=[], help="something he comes across. He never learns it was yours")
+    c = sub.add_parser("cast", help="roll a new owner")
+    c.add_argument("--pin", action="append", default=[], help="a fact in words: 'a lock keeper', 'impatient, generous'")
+    c.add_argument("--dial", action="append", default=[], help=f"set a dial instead of rolling it, e.g. bold=0.6. {', '.join(DIALS)}")
+    c.add_argument("--name", default=None, help="folder name. Default: their own")
+    c.add_argument("--seed", type=int, default=int(time.time()))
+    c.add_argument("--model", default="sonnet")
     for name, helptext in (("say", "leave him a note, shown at his next sitting"),
                            ("plant", "something he comes across, never traced to you")):
         s = sub.add_parser(name, help=helptext)
@@ -758,10 +978,11 @@ def main():
     a = ap.parse_args()
     if a.cmd == "run":
         return run_cmd(a)
+    if a.cmd == "cast":
+        return cast_cmd(a)
     if a.cmd == "journal":
         life = Life(owner_dir(a.owner))
-        print(f"# {life.root.name}, day {life.days()}\n")
-        print(life.recent(a.last, 4000))
+        print(f"# {life.root.name}, day {life.days()}\n\n{life.recent(a.last, 4000)}")
         return 0
     target = Path(a.run).expanduser() / ("inbox.md" if a.cmd == "say" else "plant.md")
     if not target.parent.is_dir():

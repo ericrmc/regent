@@ -36,10 +36,8 @@ missing a broken link and not reporting a working one.
 
 ## Budget
 
-tokens: 40000000
-spend_usd: 80
-turns: 12
-appetite: 50%
+days: 10
+turns_per_day: 1.2
 
 ## Tools
 
