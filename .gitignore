@@ -25,3 +25,7 @@ venv/
 
 # The ledgers and digests under /runs are the lab notebook: an LLM run is not
 # reproducible, so what it produced is kept. Tracked deliberately.
+
+# SQLite write-ahead sidecars. The .db itself is the asset and is tracked.
+*.db-wal
+*.db-shm

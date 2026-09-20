@@ -1,0 +1,25 @@
+[project]
+name = "regent"
+version = "0.2.0"
+description = "A simulated owner who governs a project over a long run."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+regent = "regent:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["regent"]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+# FURB167: re.S/M/I are the idiomatic spellings here.
+# BLE001: a dream that fails costs nothing and must not end the run.
+# PLW1510: the charter's Check command is expected to fail; that is the signal.
+ignore = ["FURB167", "BLE001", "PLW1510"]

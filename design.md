@@ -1,5 +1,26 @@
 # Regent: a design
 
+> **Status, 2026-09-21.** This document describes the *first* architecture,
+> which is now in `archive/`. Its premise still holds and is the reason the
+> project exists: authority sits with a simulated owner, bounded by a charter,
+> with a short list of decisions the human keeps. Read the opening section, The
+> charter, What makes it an owner, The life, Inventing requirements, Directing,
+> challenging, constraining, and What the human still does — those are current.
+>
+> The mechanism is not. The harness is now one file of ~750 lines. Superseded
+> here: the three-level tree of regent, orchestrator and builder; dispatches and
+> returns with their `===RETURN===` protocol; the spoon cycle of saturate, drift,
+> sift and consolidate; the manifold; attention as a module with its own model
+> call; spot checks as a separate read-only call; the risk tiers and the signal
+> ladder; per-role model configuration. Claude Code does the work those parts
+> did — subagents, sessions, `--json-schema`, `--max-budget-usd` — and the
+> harness now holds only the owner: his life, his lossy memory of a project, and
+> his dreams.
+>
+> `README.md` and the module docstring in `regent.py` describe what actually
+> runs. This file is kept for its reasoning, not its mechanism, and has not been
+> rewritten.
+
 The change is where the authority sits, not what gets done. Intent,
 judgement and ideas are the same three functions a human product owner
 performs. Today a person performs them, and on projects where the risk
