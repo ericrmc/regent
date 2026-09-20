@@ -1,0 +1,27 @@
+# Python build output and tool caches.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+
+# Agent tooling that is not part of this project.
+.serena/
+
+# The old harness's run output, 6MB of generated state, superseded by the
+# single harness. Its source under archive/ is tracked; this is not.
+/archive/run/
+/archive/runs/
+/archive/.build-report.md
+
+# Live state, written when a run is pointed at this repo rather than a project.
+/run/
+
+# The ledgers and digests under /runs are the lab notebook: an LLM run is not
+# reproducible, so what it produced is kept. Tracked deliberately.

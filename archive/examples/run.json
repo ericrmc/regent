@@ -1,0 +1,16 @@
+{
+  "profile": "cheap",
+  "spend": {
+    "wake": 6.0, "react": 3.0, "audit": 3.0, "saturate": 3.0, "drift": 4.0,
+    "sift": 3.0, "consolidate": 2.0, "salience": 0.5, "spot_check": 4.0,
+    "stepping_back": 4.0, "reader": 1.0,
+    "life_bible": 3.0, "life_day": 2.0, "orchestrator": 15.0
+  },
+  "dispatching": { "max_concurrent": 2, "orchestrator_timeout_s": 1500 },
+  "life": { "owner": "piotr-mahon", "owners_dir": "owners", "backstory_days": 31 },
+  "interlude": { "every_n_turns": 1 },
+  "cycle_every_n_turns": 5,
+  "cycle_in_background": true,
+  "max_idle_turns": 4,
+  "digest": { "every_n_turns": 6 }
+}

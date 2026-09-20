@@ -1,0 +1,5 @@
+{
+  "name": "regent",
+  "description": "Return contract and evidence capture for orchestrators and builders working under a super-orchestrator run.",
+  "version": "0.1.0"
+}
