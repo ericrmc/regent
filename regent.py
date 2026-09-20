@@ -709,7 +709,8 @@ def run_cmd(a):
     lines += [f"- {q['id']} [{q['status']}] turn {q['turn']}{' (dream)' if q['from_dream'] else ''}: {q['text']}"
               for q in S["reqs"]] or ["- none"]
     lines += ["", "## What he dreamed, and where it came from", ""] + (
-        [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}" for i in S["ideas"]] or ["- none"])
+        [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}"
+         + (f"\n  he declined it: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- none"])
     lines += ["", "## Limits he changed", ""] + (
         [f"- turn {x['turn']}: was \"{x['constraint']}\", now \"{x['now']}\". Why: {x['why']}" for x in S["amended"]]
         or ["- none"])
