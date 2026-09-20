@@ -154,6 +154,13 @@ class Life:
             self.c.execute("INSERT INTO memory(project, text, iso) VALUES(?,?,?) ON CONFLICT(project) "
                            "DO UPDATE SET text=excluded.text, iso=excluded.iso", (project, text, time.strftime("%F")))
 
+    def close(self):
+        """Fold the write-ahead log back in, so the .db is the whole database and
+        copying or committing that one file carries his whole life."""
+        with self.lock:
+            self.c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self.c.close()
+
 
 class Run:
     """The run: an append-only ledger and one resumable state blob."""
@@ -186,6 +193,11 @@ class Run:
 
     def say(self, text: str):
         print(f"[{(time.time() - self.t0) / 60:5.1f}m] {text}", flush=True)
+
+    def close(self):
+        with self.lock:
+            self.c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self.c.close()
 
 
 def sections(md: str) -> dict[str, str]:
@@ -232,6 +244,11 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd)
     p.stdin.write(prompt)
     p.stdin.close()
+    # stderr is drained on its own thread. A run is hours long, and a child that
+    # fills the 64KB pipe while we are blocked reading stdout would hang forever.
+    errbuf: list[str] = []
+    drain = threading.Thread(target=lambda: errbuf.append(p.stderr.read()), daemon=True)
+    drain.start()
     result, used = {}, []
     for line in p.stdout:
         try:
@@ -250,7 +267,8 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         elif ev.get("type") == "result":
             result = ev
     p.wait()
-    err = "" if result else p.stderr.read()[-400:]
+    drain.join(5)
+    err = "" if result else ("".join(errbuf))[-400:]
     secs = round(time.time() - start, 1)
     denials = [x.get("tool_name") for x in result.get("permission_denials", [])]
     run.log("call", role=role, model=model, seconds=secs, cost=result.get("total_cost_usd", 0),
@@ -708,6 +726,8 @@ def run_cmd(a):
             f"{'passed' if S['check_ok'] else 'FAILED'}. requirements {built} of {len(S['reqs'])}, "
             f"{dreamt} from dreams. limits changed {len(S['amended'])}.")
     run.say(f"digest: {root / 'digest.md'}")
+    life.close()
+    run.close()
 
 
 def main():
