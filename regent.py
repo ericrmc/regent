@@ -53,6 +53,9 @@ from pathlib import Path
 HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
 SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # no tools, no servers, no settings
 SPOT_USD = 0.10   # a spot check is a glance. The CLI enforces it, so no limiter here.
+# Every call that is not the builder replaces Claude Code's system prompt. This is what the night runs get.
+PLAIN = ("You are one stage of a longer process, not an assistant in a conversation and not a programmer. "
+         "Do what the message asks, in the form it asks for, and add nothing around it.")
 DIALS = ("bold", "curious", "patient", "trusting", "thorough", "stubborn", "restless")
 
 STR, BOOL = {"type": "string"}, {"type": "boolean"}
@@ -400,8 +403,9 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
 
 
 def ask(run: Run, role: str, model: str, prompt: str, schema: dict | None = None, system: str | None = None):
-    """A sealed call: no tools, no settings, nothing but the words."""
-    got = claude(run, role, model, prompt, cwd=run.root, tools="", schema=schema, system=system)
+    """A sealed call: no tools, no settings, nothing but the words. It never runs on
+    Claude Code's own system prompt, which would make a programmer of every night run."""
+    got = claude(run, role, model, prompt, cwd=run.root, tools="", schema=schema, system=system or PLAIN)
     return got["data"] if schema else got["text"].strip()
 
 
@@ -696,6 +700,9 @@ def run_cmd(a):
         S["counts"]["challenge"] += int(d["challenged"])
         S["counts"]["constrain"] += int(d["constrained"])
         message = d["message"]
+        if d["constraints_changed"]:  # said in the message too: a resumed builder keeps the system prompt it started with
+            message += "\n\nLimits I have changed, and the change stands:\n" + "\n".join(
+                f"- was: {c['constraint']} / now: {c['now']}" for c in d["constraints_changed"])
         if d["requirements_new"]:
             message += "\n\nNew requirements, build them together:\n" + "\n".join(
                 f"- {q['text']} (I will check: {q['test']})" for q in d["requirements_new"])
