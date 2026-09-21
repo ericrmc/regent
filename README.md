@@ -26,6 +26,16 @@ forever.
 rewritten as what a person would remember of it, and parts go. The builder is
 now and then replaced by a fresh one who gets only that memory.
 
+**Asking where it is up to.** Some sittings he asks before he directs: where the
+work is, what the builder thinks comes next. The builder answers from its own
+session, where its assumptions live, able to read the project and not change
+it. He probes what does not sit right, a few questions at most, and names what
+the builder took for granted and whether it holds for him. One that does not
+hold is his to act on in the same sitting. The exchange goes into the record the
+night's memory is written from, so what he forgot, he can find out again. It is
+a draw like the rest: a fresh builder, days away, curiosity and distrust all
+pull him to it.
+
 **Sleep.** Nobody dreams on request, so he is never asked to. The spoon cycle
 is four runs that are not him:
 

@@ -57,7 +57,7 @@ from pathlib import Path
 
 HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
 SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # no tools, no servers, no settings
-SPOT_USD = 0.10   # a spot check is a glance. The CLI enforces it, so no limiter here.
+SPOT_USD = 0.30   # a spot check is a glance, two or three commands. The CLI enforces it, so no limiter here.
 # Every call that is not the builder replaces Claude Code's system prompt. This is what the night runs get.
 PLAIN = ("You are one stage of a longer process, not an assistant in a conversation and not a programmer. "
          "Do what the message asks, in the form it asks for, and add nothing around it.")
@@ -80,6 +80,7 @@ DECISION = obj(
     requirements_built=arr(STR), ideas_declined=arr(obj(idea=STR, why=STR, not_now=BOOL)),
     constraints_changed=arr(obj(constraint=STR, now=STR, why=STR)), ask_the_human=STR,
     wants_to_look=BOOL, looked_at=arr(STR), look_matched=BOOL, notes_to_self=STR, done=BOOL)
+ASKED = obj(question=STR, assumptions=arr(obj(assumption=STR, holds=BOOL, why=STR)), enough=BOOL)
 MOTIFS = obj(motifs=arr(STR), tensions=arr(STR), questions=arr(STR))
 LINKS = obj(links=arr(obj(kind={"type": "string", "enum": ["metaphor", "causal analogy", "structural analogy", "seed"]},
                           text=STR, anchors=arr(STR), other=STR, mechanism=STR)))
@@ -393,7 +394,7 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
            append: str | None = None, tools: str | None = None, allowed: str | None = None,
            denied: list[str] | None = None, schema: dict | None = None, session: str | None = None,
            resume: bool = False, effort: str | None = None, usd: float | None = None,
-           settings: list[str] | None = None, who: str = "claude") -> dict:
+           settings: list[str] | None = None, who: str = "claude", _retry: bool = True) -> dict:
     """One call, always streamed, so every tool use is seen as it happens."""
     start = time.time()
     cmd = ["claude", "-p", "--model", model, *(settings if settings is not None else SEALED),
@@ -447,7 +448,14 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         try:
             structured = json.loads(result.get("result") or "")
         except (json.JSONDecodeError, TypeError):
-            raise RuntimeError(f"{role} returned no structured output: {err or (result.get('result') or '')[:200]}")
+            # A model now and then ends its turn without the structured answer. Once is weather; twice is a fault.
+            if _retry and result.get("subtype") != "error_max_budget_usd":
+                run.log("retry", role=role, subtype=result.get("subtype"))
+                return claude(run, role, model, prompt, cwd=cwd, system=system, append=append, tools=tools,
+                              allowed=allowed, denied=denied, schema=schema, session=session, resume=resume,
+                              effort=effort, usd=usd, settings=settings, who=who, _retry=False)
+            raise RuntimeError(f"{role} returned no structured output ({result.get('subtype')}): "
+                               f"{err or (result.get('result') or '')[:200]}")
     return {"text": result.get("result") or "", "data": structured, "seconds": secs, "denials": denials,
             "session": result.get("session_id")}
 
@@ -654,6 +662,10 @@ def run_cmd(a):
              "counts": {"direct": 0, "challenge": 0, "constrain": 0, "cycles": 0, "step_backs": 0, "looks": 0,
                         "empty_days": 0, "fresh": 0}}
 
+    S.setdefault("since_ask", 2)
+    S.setdefault("idle", 0)
+    S.setdefault("assumptions", [])
+    S["counts"].setdefault("asks", 0)
     ch = sections(S["charter"])
 
     def budget(key: str) -> float:
@@ -735,6 +747,53 @@ def run_cmd(a):
     def stance() -> float:
         return clip(0.6 * S["mood"] + 0.4 * life.d("bold"))
 
+    def ask_where(ctx: str, rng: random.Random) -> tuple[str, list[dict]]:
+        """He asks the builder where it is up to and what comes next, and listens for what it took for granted. The builder
+        answers from its own session, where its assumptions live, and may read but not change anything."""
+        rounds, said, found = 1 + min(2, poisson(rng, 0.6 + 0.6 * life.d("curious"))), [], []
+        for k in range(rounds + 1):
+            heard = "\n\n".join(f"You asked: {q}\nThe builder said: {r}" for q, r in said)
+            t = time.time()
+            q = claude(run, "regent", a.regent_model, ctx + (
+                "TODAY YOU ASK BEFORE YOU DIRECT. What you remember of this has gaps. Ask the builder where the work is up to "
+                "and what it thinks comes next, in your own words, one question at a time. Then listen for what it took for "
+                "granted: something about you, about the people this is for, about how it will be used, or about what done "
+                "means, that nobody ever said. When an answer does not sit right, ask about that.\n\n"
+                if not said else "WHAT YOU HAVE ASKED SO FAR TODAY\n" + heard + "\n\n"
+                + ("That is all the time you have for questions. Set enough true. " if k == rounds else
+                   "Ask your next question, or set enough true if you have heard what you need. ")
+                + "In assumptions, put every thing the builder has taken for granted so far today, once each, whether it holds "
+                "for you, and why. Only what it said, not what you suspect."),
+                cwd=root, tools="", system=system, schema=ASKED, who=life.root.name, settings=SEALED + fence)["data"]
+            S["blocking"] += time.time() - t
+            found = q["assumptions"] if said else found
+            if k == rounds or not q["question"].strip() or (said and q["enough"]):
+                break
+            run.say(f"   {life.root.name} asks > {q['question'][:150]}")
+            out = claude(run, "answer", a.model, S["handover"] + "A question from the owner, not a request for work. Answer "
+                         "from the project as it stands: read what you need, change nothing and commit nothing. Say plainly "
+                         "what you assumed that he never said. Under 200 words.\n\n" + q["question"], cwd=project,
+                         append=norms(), session=S["session"], resume=S["started"], effort=a.effort, denied=deny,
+                         settings=["--strict-mcp-config", "--setting-sources", "project", *fence], tools="Read,Glob,Grep,Bash",
+                         allowed="Read,Glob,Grep," + his_bash + ",Bash(git log:*),Bash(git status:*),Bash(git diff:*)",
+                         who="answer")
+            S["handover"], S["started"] = "", True
+            S["session"] = out["session"] or S["session"]
+            S["claude_secs"] += out["seconds"]
+            said.append((q["question"], out["text"]))
+            run.say(f"   builder says > {out['text'][:150].replace(chr(10), ' ')}")
+        if not said:
+            return "", found
+        S["counts"]["asks"] += 1
+        S["assumptions"] += [{**x, "turn": S["turn"]} for x in found]
+        run.log("asked", rounds=[{"q": q_, "a": r} for q_, r in said], assumptions=found)
+        return ("YOU ASKED THE BUILDER WHERE IT IS UP TO, BEFORE WRITING THIS\n"
+                + "\n\n".join(f"You asked: {q_}\nThe builder said: {r}" for q_, r in said) + "\n\n"
+                + ("What it took for granted, and whether it holds for you:\n" + "\n".join(
+                    f"- {x['assumption']}: {'holds' if x['holds'] else 'DOES NOT HOLD'}. {x['why']}" for x in found)
+                   + "\nOne that does not hold is yours to act on in this message: a requirement, a limit, a challenge.\n\n"
+                   if found else "")), found
+
     def sitting(day: int, rng: random.Random, met: str) -> str:
         turn = S["turn"] = S["turn"] + 1
         failing = bool(S["last_check"]) and not S["check_ok"]
@@ -748,6 +807,12 @@ def run_cmd(a):
         # worth nothing to him, so the pull is weak, grows with the turns since he last looked, and distrust feeds it.
         pull = 0.12 + 0.15 * life.d("thorough") + 0.3 * S["wants_look"] + max(0.0, 0.5 - S["trust"])
         look = minutes >= 12 and bool(S["last_reply"] or S["existing"]) and rng.random() < pull * (1 - math.exp(-S["since_look"] / 2))
+        # Now and then he asks before he directs: where it is up to, what comes next. Memory is what goes, so a fresh
+        # builder or days away pull him to it, and so do curiosity and distrust.
+        pull = (0.1 + 0.2 * life.d("curious") + max(0.0, 0.5 - S["trust"]) + 0.35 * bool(S["handover"])
+                + 0.1 * min(3, S["idle"]))
+        asking = minutes >= 12 and bool(S["last_reply"]) and rng.random() < pull * (1 - math.exp(-S["since_ask"] / 3))
+        S["idle"] = 0
 
         said = ""
         if inbox.exists() and inbox.read_text().strip():
@@ -784,6 +849,11 @@ def run_cmd(a):
                f"{S['last_check']}\n\n" if S["last_check"] else "")
             + (f"WHAT THE THING PRINTED WHEN THE HARNESS RAN IT JUST NOW\n{cut(S['last_show'], minutes)}\n\n"
                if S["last_show"] else "")
+        )
+        talk = ask_where(ctx, rng)[0] if asking else ""
+        asking = bool(talk)
+        ctx += (
+            talk
             + (("TODAY YOU HAVE A FEW MINUTES TO TRY IT YOURSELF. You are in the project folder. Run the thing on something, "
                 "and read what is written for people: the README, the usage text, the sample files. You can run these: "
                 + ", ".join(tool_lines) + ". Do not read the code, and do not go looking through files. If you want the code "
@@ -796,12 +866,22 @@ def run_cmd(a):
             "empty on one that is simply yours."
         )
         t = time.time()
-        d = claude(run, "regent", a.regent_model, ctx, cwd=project if look else root,
-                   tools="Read,Grep,Glob,Bash" if look else "", allowed=("Read,Grep,Glob," + his_bash) if look else None,
-                   usd=SPOT_USD if look else None, system=system, schema=DECISION, who=life.root.name,
-                   settings=SEALED + fence)["data"]
+        try:
+            d = claude(run, "regent", a.regent_model, ctx, cwd=project if look else root,
+                       tools="Read,Grep,Glob,Bash" if look else "", allowed=("Read,Grep,Glob," + his_bash) if look else None,
+                       usd=SPOT_USD if look else None, system=system, schema=DECISION, who=life.root.name,
+                       settings=SEALED + fence)["data"]
+        except RuntimeError:
+            if not look:
+                raise
+            # The CLI cuts a look off at its budget with no answer. A person whose few minutes ran out still says something.
+            look = False
+            d = claude(run, "regent", a.regent_model, ctx + "\n\nYou started trying it yourself and your minutes ran out "
+                       "before you made sense of what you saw. Leave looked_at empty and write your message.",
+                       cwd=root, tools="", system=system, schema=DECISION, who=life.root.name, settings=SEALED + fence)["data"]
         S["blocking"] += time.time() - t
         S["since_look"] += 1
+        S["since_ask"] = 0 if asking else S["since_ask"] + 1
         if look:
             S["since_look"] = 0
             S["counts"]["looks"] += 1
@@ -847,18 +927,21 @@ def run_cmd(a):
                 f"- {q['text']} (I will check: {q['test']})" for q in d["requirements_new"])
         if S["ways"]:
             message += "\n\nMy standing ways of working, which still hold:\n" + "\n".join(f"- {w}" for w in S["ways"])
-        run.log("sitting", n=turn, day=day, minutes=round(minutes), look=look, trust=round(S["trust"], 2), verdict=d["verdict"], message=message,
+        run.log("sitting", n=turn, day=day, minutes=round(minutes), look=look, asked=asking, trust=round(S["trust"], 2), verdict=d["verdict"], message=message,
                 stance_line=d["stance_line"], challenged=d["challenged"], constrained=d["constrained"],
                 new=[q["text"] for q in d["requirements_new"]], built=d["requirements_built"],
                 declined=d["ideas_declined"], constraints_changed=d["constraints_changed"], done=d["done"])
-        run.say(f"sitting {turn} (day {day}, {round(minutes)} min{', tried it' if look else ''}, {d['verdict']}): "
+        run.say(f"sitting {turn} (day {day}, {round(minutes)} min{', tried it' if look else ''}"
+                f"{', asked first' if asking else ''}, {d['verdict']}): "
                 f"{d['stance_line'][:110]}")
         run.say(f"   {life.root.name} > {message[:160].replace(chr(10), ' ')}")
         quiet = not (d["requirements_new"] or pend or d["challenged"] or d["constrained"]) and d["verdict"] == "accept"
         S["dry"] = S["dry"] + 1 if quiet else 0
 
         run.save(S)   # so the page shows what he asked for while the builder is still at it
-        out = claude(run, "claude", a.model, S["handover"] + message, cwd=project, append=norms(),
+        # A question round told the builder to change nothing. Without this it holds that as a standing order.
+        lead = "The questions are over, and the hold on changing things with them. This is the work.\n\n" if asking else ""
+        out = claude(run, "claude", a.model, S["handover"] + lead + message, cwd=project, append=norms(),
                      session=S["session"], resume=S["started"], effort=a.effort, denied=deny,
                      settings=["--strict-mcp-config", "--setting-sources", "project", *fence],
                      allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
@@ -878,7 +961,7 @@ def run_cmd(a):
         if show_cmd:
             S["last_show"], _ = shell(show_cmd, project, a.timeout, 60)
         S["built_once"] = S["built_once"] or S["check_ok"] or not check_cmd
-        S["records"].append({"turn": turn, "message": message, "reply": S["last_reply"], "check_ok": S["check_ok"],
+        S["records"].append({"turn": turn, "asked": talk, "message": message, "reply": S["last_reply"], "check_ok": S["check_ok"],
                              "new": [q["text"][:100] for q in d["requirements_new"]],
                              "declined": [x["idea"][:60] for x in d["ideas_declined"]],
                              "amended": [x["now"][:80] for x in d["constraints_changed"]]})
@@ -900,7 +983,8 @@ def run_cmd(a):
     def consolidate():
         """The forgetting. What he holds of the project is rewritten as a memory, and parts of it go."""
         raw = "\n\n".join(
-            f"Turn {r['turn']}. He said: {r['message'][:500]}\nThe builder said: {r['reply'][:700]}\n"
+            f"Turn {r['turn']}. " + (f"He asked where it was up to. {r['asked'][:900]}\n" if r.get("asked") else "")
+            + f"He said: {r['message'][:500]}\nThe builder said: {r['reply'][:700]}\n"
             f"The check {'passed' if r['check_ok'] else 'failed'}. New requirements: {r['new']}. "
             f"Ideas declined: {r['declined']}. Limits changed: {r['amended']}."
             for r in S["records"] if r["turn"] > S["compressed_upto"])
@@ -970,7 +1054,8 @@ def run_cmd(a):
                 "ideas_you_woke_with": len(S["ideas"]), "ideas_taken": sum(1 for i in S["ideas"] if i["status"] == "taken"),
                 "ideas_declined": [{"idea": i["text"][:80], "why": i.get("why", "")}
                                    for i in S["ideas"] if i["status"] in {"declined", "set aside"}],
-                "limits_you_changed": S["amended"], "fresh_builder_sessions": S["counts"]["fresh"],
+                "limits_you_changed": S["amended"], "times_you_asked_where_it_was_up_to": S["counts"]["asks"],
+                "assumptions_you_found_that_did_not_hold": [x["assumption"][:120] for x in S["assumptions"] if not x["holds"]], "fresh_builder_sessions": S["counts"]["fresh"],
                 "builder_minutes": round(S["claude_secs"] / 60, 1), "your_minutes": round(S["blocking"] / 60, 1),
                 "ways_now": S["ways"]}
         t = time.time()
@@ -1019,6 +1104,7 @@ def run_cmd(a):
             run.log("plant", human_only=True)
         if not n:
             S["counts"]["empty_days"] += 1
+            S["idle"] += 1
             run.say(f"day {day}: no time for the project.")
         seen = [sitting(day, rng, met if k == 0 else "") for k in range(n)]
 
@@ -1055,7 +1141,7 @@ def run_cmd(a):
     run.save(S)
     wall = time.time() - run.t0
     calls = run.rows("call")
-    spend = {k: sum(x.get("cost", 0) for x in calls if (x["role"] == "claude") == (k == "builder")) for k in ("builder", "owner")}
+    spend = {k: sum(x.get("cost", 0) for x in calls if (x["role"] in ("claude", "answer")) == (k == "builder")) for k in ("builder", "owner")}
     night_usd = sum(x.get("cost", 0) for x in calls if x["role"] in ("saturate", "drift", "sift"))
     built = sum(1 for q in S["reqs"] if q["status"] == "built")
     dreamt = sum(1 for q in S["reqs"] if q["from_dream"])
@@ -1065,7 +1151,7 @@ def run_cmd(a):
              f"${spend['owner']:.2f}, of which the spoon cycles were ${night_usd:.2f}. The check "
              f"{'passes' if S['check_ok'] else 'FAILS'}.")
     did = (f"He directed {c['direct']} times, challenged {c['challenge']}, constrained {c['constrain']}, tried it himself "
-           f"{c['looks']} times and had {c['empty_days']} days with no time for it. The spoon fell on {c['cycles']} nights, "
+           f"{c['looks']} times, asked where it was up to {c.get('asks', 0)} times and had {c['empty_days']} days with no time for it. The spoon fell on {c['cycles']} nights, "
            f"he stepped back {c['step_backs']} times, and a fresh builder picked it up {c['fresh']} times. Trust in the "
            f"builder ended at {S['trust']:.2f}.")
     lines = [f"# {project.name}", "", spent, "", did, "",
@@ -1075,6 +1161,9 @@ def run_cmd(a):
     lines += ["", "## What the nights brought, and what he did with it", ""] + (
         [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}\n  it might fail because: {i.get('might_fail', '')}"
          + (f"\n  he {'set it aside for now' if i['status'] == 'set aside' else 'declined it'}: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- nothing"])
+    lines += ["", "## What the builder took for granted", ""] + (
+        [f"- sitting {x['turn']} [{'holds' if x['holds'] else 'does not hold'}] {x['assumption']}. {x['why']}"
+         for x in S["assumptions"]] or ["- nothing surfaced"])
     lines += ["", "## Limits he changed", ""] + (
         [f"- sitting {x['turn']}: was \"{x['constraint']}\", now \"{x['now']}\". Why: {x['why']}" for x in S["amended"]]
         or ["- none"])
