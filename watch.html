@@ -304,9 +304,9 @@ function spoon(sp, k, ideas) {
   const linkRow = (ln, i) => `<div class="link"><span class="meta">#${i} · ${esc(ln.kind)} · ${(ln.anchors || []).map(a => `<span title="${esc(el[a] || '')}">${esc(a)}</span>`).join(' ')} → ${esc(ln.other)}</span><span>${esc(ln.text)}</span>${ln.mechanism ? `<span class="mech">Mechanism: ${esc(ln.mechanism)}</span>` : ''}</div>`;
   const cards = sp.candidates.map((c, j) => { const me = ideas[c.text] || {}, st = me.status || 'pending';
     const src = (c.from_indexes || []).filter(i => links[i]);
-    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for them' : 'they ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
+    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for them' : st === 'set aside' ? 'they set it aside, not now' : 'they ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
       `<p class="txt">${esc(c.text)}</p><p class="sub"><b>How they would see it work.</b> ${esc(c.test)}</p><p class="sub"><b>Why it might fail.</b> ${esc(c.why_it_might_fail)}</p>` +
-      (me.why ? `<p class="sub"><b>Why they declined.</b> ${esc(me.why)}</p>` : '') +
+      (me.why ? `<p class="sub"><b>${st === 'set aside' ? 'Why not now.' : 'Why they declined.'}</b> ${esc(me.why)}</p>` : '') +
       (src.length ? fold(`Where it came from: ${plural(src.length, 'link')}`, src.map(i => linkRow(links[i], i)).join(''), `src${k}-${j}`) : '') + '</div>'; }).join('');
   return `<div class="motifs">${list('Motifs', m.motifs)}${list('Tensions', m.tensions)}${list('Questions', m.questions)}</div>${cards}` +
     fold(`All ${plural(links.length, 'link')} caught that night`, links.map(linkRow).join(''), `links${k}`);

@@ -28,8 +28,8 @@ in code: the pass ends when the links let go of the project. Sift reads what
 was caught as an anonymous list in a context that never saw it made, and keeps
 a few as things the project could become. He meets those awake, takes them or
 turns them down, and that is the gate. Consolidate is the forgetting: his
-memory of the project is rewritten lossy, and what he declined goes on his
-taste record so it is not dreamt twice.
+memory of the project is rewritten lossy, and what he declined for good goes
+on his taste record so it is not dreamt twice. What he only set aside does not.
 
 Every cadence here is a draw from a distribution, never a count. The first
 harness was 10,914 lines and 224 tunables, and nobody could tune it. Almost
@@ -77,7 +77,7 @@ def obj(**props) -> dict:
 DECISION = obj(
     stance_line=STR, verdict={"type": "string", "enum": ["continue", "accept", "reject"]}, message=STR,
     challenged=BOOL, constrained=BOOL, requirements_new=arr(obj(text=STR, test=STR, idea=STR)),
-    requirements_built=arr(STR), ideas_declined=arr(obj(idea=STR, why=STR)),
+    requirements_built=arr(STR), ideas_declined=arr(obj(idea=STR, why=STR, not_now=BOOL)),
     constraints_changed=arr(obj(constraint=STR, now=STR, why=STR)), ask_the_human=STR,
     wants_to_look=BOOL, looked_at=arr(STR), look_matched=BOOL, notes_to_self=STR, done=BOOL)
 MOTIFS = obj(motifs=arr(STR), tensions=arr(STR), questions=arr(STR))
@@ -774,7 +774,8 @@ def run_cmd(a):
             + ("\n".join(f"- {q['id']} [{q['status']}] {q['text']}" for q in S["reqs"]) or "- none yet") + "\n\n"
             + ("YOU WOKE WITH THESE, AND THEY ARE STILL OPEN. You do not know where they came from. Take one as a new "
                "requirement, putting its label in that requirement's idea field, or decline it by label in ideas_declined "
-               "with your reason. A starting constraint in the way is not a reason. Change the constraint.\n"
+               "with your reason. Set not_now true when the idea may be sound and this is only the wrong moment for it, "
+               "and false when you would turn it down on any day. A starting constraint in the way is not a reason. Change the constraint.\n"
                + "\n".join(f"- {i['label']}: {i['text']} (you would check: {i['test']})" for i in pend) + "\n\n" if pend else "")
             + (f"WHAT THE BUILDER SAID BACK\n{cut(S['last_reply'], minutes)}\n\n" if S["last_reply"] else
                ("THIS PROJECT ALREADY EXISTS. Nothing has been said yet. Try it first.\n\n" if S["existing"] else
@@ -818,8 +819,11 @@ def run_cmd(a):
         for dec in d["ideas_declined"]:
             for i in pend:
                 if i["status"] == "pending" and re.search(rf"\b{i['label']}\b", dec["idea"], re.I):
-                    i["status"], i["why"] = "declined", dec["why"]
-                    life.judged(pname, "turned down", i["text"], dec["why"])
+                    # Only a decline of the idea itself teaches the nights anything. "Not now" is about the day, so it
+                    # stays off the taste record and a later night is free to bring the same mechanism back.
+                    i["status"], i["why"] = "set aside" if dec["not_now"] else "declined", dec["why"]
+                    if not dec["not_now"]:
+                        life.judged(pname, "turned down", i["text"], dec["why"])
         for rid in d["requirements_built"]:
             for q in S["reqs"]:
                 if q["id"] == rid:
@@ -965,7 +969,7 @@ def run_cmd(a):
                 "requirements_per_sitting": [len(x.get("new") or []) for x in sit],
                 "ideas_you_woke_with": len(S["ideas"]), "ideas_taken": sum(1 for i in S["ideas"] if i["status"] == "taken"),
                 "ideas_declined": [{"idea": i["text"][:80], "why": i.get("why", "")}
-                                   for i in S["ideas"] if i["status"] == "declined"],
+                                   for i in S["ideas"] if i["status"] in {"declined", "set aside"}],
                 "limits_you_changed": S["amended"], "fresh_builder_sessions": S["counts"]["fresh"],
                 "builder_minutes": round(S["claude_secs"] / 60, 1), "your_minutes": round(S["blocking"] / 60, 1),
                 "ways_now": S["ways"]}
@@ -1070,7 +1074,7 @@ def run_cmd(a):
               for q in S["reqs"]] or ["- none"]
     lines += ["", "## What the nights brought, and what he did with it", ""] + (
         [f"- [{i['status']}] {i['text']}\n  from: {i.get('came_from', '')}\n  it might fail because: {i.get('might_fail', '')}"
-         + (f"\n  he declined it: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- nothing"])
+         + (f"\n  he {'set it aside for now' if i['status'] == 'set aside' else 'declined it'}: {i['why']}" if i.get("why") else "") for i in S["ideas"]] or ["- nothing"])
     lines += ["", "## Limits he changed", ""] + (
         [f"- sitting {x['turn']}: was \"{x['constraint']}\", now \"{x['now']}\". Why: {x['why']}" for x in S["amended"]]
         or ["- none"])

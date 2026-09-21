@@ -37,9 +37,13 @@ is four runs that are not him:
 | Sift | sonnet, fresh context | the caught links as an anonymous shuffled list, the intent, his taste record | keeps a few as requirements: not fixes for the builder, but what the thing could become for the person it is for, each with why it might fail |
 
 He meets the survivors awake, not knowing where they came from, and takes them
-or turns them down. That is the gate. What he turns down goes on his taste
-record, which Sift reads, so it is not dreamt twice. Every candidate ends in a
-row: taken, declined with his reason, or still open.
+or turns them down. That is the gate. A decline is one of two kinds. Turned
+down for good, it goes on his taste record, which Sift reads, so it is not
+dreamt twice. Set aside as "not now", it stays off the record, because that is
+about his day and not the idea, and a later night may bring the same mechanism
+back in another form. Every candidate ends in a row with his reason: taken,
+declined, set aside, or still open. The digest and the watch page list them
+all, so a declined idea you still want is yours to action.
 
 **Nothing runs on a count.** Sittings, their length, whether he tries the thing
 himself, when the spoon falls, when he steps back to look at how the work is
