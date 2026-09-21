@@ -9,6 +9,7 @@ call, then one Claude turn. Nothing else sits in Claude's path.
     regent run --project ~/code/thing --days 10 --turns-per-day 1.5
     regent say <run> "a note from you, shown at his next sitting"
     regent plant <run> "something he comes across, never traced to you"
+    regent watch
     regent journal piotr-mahon
 
 The unit is a day. The dice decide how the day went, how many sittings the
@@ -31,12 +32,14 @@ memory of the project is rewritten lossy, and what he declined goes on his
 taste record so it is not dreamt twice.
 
 Every cadence here is a draw from a distribution, never a count. The first
-harness is in archive/: 10,914 lines and 224 tunables. Read it before adding
-a module.
+harness was 10,914 lines and 224 tunables, and nobody could tune it. Almost
+everything it did, Claude Code already does. Think of that before adding a
+module.
 """
 from __future__ import annotations
 
 import argparse
+import http.client
 import http.server
 import json
 import math
@@ -342,6 +345,50 @@ def sections(md: str) -> dict[str, str]:
     return {k: v.strip() for k, v in out.items()}
 
 
+class Strip(http.server.BaseHTTPRequestHandler):
+    """The CLI tells every model today's date, the human's email and the machine it is on, in reminders placed before
+    the prompt. No flag turns that off, so calls that are not the builder go to the API through this, which drops them."""
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if "/v1/messages" in self.path:
+            try:
+                req = json.loads(body)
+                for m in req.get("messages", []):
+                    if isinstance(m.get("content"), list):
+                        m["content"] = [b for b in m["content"]
+                                        if not str(b.get("text", "")).lstrip().startswith("<system-reminder>")] or m["content"]
+                body = json.dumps(req).encode()
+            except ValueError:
+                pass
+        head = {k: v for k, v in self.headers.items() if k.lower() not in {"host", "content-length", "accept-encoding", "connection"}}
+        up = http.client.HTTPSConnection("api.anthropic.com", timeout=900)
+        up.request(self.command, self.path, body, {**head, "Content-Length": str(len(body)), "Accept-Encoding": "identity"})
+        r = up.getresponse()
+        self.send_response(r.status)
+        for k, v in r.getheaders():
+            if k.lower() not in {"transfer-encoding", "content-length", "connection"}:
+                self.send_header(k, v)
+        self.send_header("Connection", "close")
+        self.end_headers()
+        while chunk := r.read1(65536):
+            self.wfile.write(chunk)
+            self.wfile.flush()
+
+    do_GET = do_POST
+
+    def log_message(self, *_):
+        pass
+
+
+def stripped(_made: list = []) -> dict:   # noqa: B006  the default list is the point: one server for the process
+    if not _made:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Strip)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        _made.append(f"http://127.0.0.1:{server.server_address[1]}")
+    return {**os.environ, "ANTHROPIC_BASE_URL": _made[0]}
+
+
 def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: str | None = None,
            append: str | None = None, tools: str | None = None, allowed: str | None = None,
            denied: list[str] | None = None, schema: dict | None = None, session: str | None = None,
@@ -362,7 +409,8 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         cmd += ["--resume", session] if resume else ["--session-id", session]
     else:
         cmd += ["--no-session-persistence"]
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd)
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd,
+                         env=stripped() if system else None)
     p.stdin.write(prompt)
     p.stdin.close()
     # stderr is drained on its own thread. A run is hours long, and a child that
@@ -483,7 +531,7 @@ def cast_cmd(a):
     root = HOME / "owners" / (a.name or re.sub(r"[^a-z0-9-]", "", got["slug"].lower()) or f"owner-{a.seed}")
     root.mkdir(parents=True, exist_ok=True)
     (root / "bible.md").write_text(got["bible"].strip() + "\n")
-    (root / "disposition.json").write_text(json.dumps({**dials, "rolled": {"seed": a.seed, "words": words}}, indent=2))
+    (root / "disposition.json").write_text(json.dumps({**dials, "pinned": a.pin, "rolled": {"seed": a.seed, "words": words}}, indent=2))
     (root / "events.md").write_text("\n".join(got["events"]) + "\n")
     print(f"\n{got['name']}  ->  {root}\n  " + ", ".join(f"{k} {v:+.2f}" for k, v in dials.items()) +
           f"\n  rolled words: {', '.join(words)}\n\n" + got["bible"].split("## The cast")[0].strip()[:900] +
@@ -617,6 +665,11 @@ def run_cmd(a):
     tool_lines = [ln.strip("- ").strip() for ln in ch.get("tools", "").splitlines() if ln.strip().startswith("-")]
     his_bash = ",".join(sorted({f"Bash({t.split()[0]}:*)" for t in tool_lines})) or "Bash(ls:*)"
     deny = ["WebFetch", "WebSearch"] if re.search(r"network", ch.get("refusals", ""), re.I) else []
+    # Claude Code's own sandbox holds them both: a shell can write only inside the project and reach only the domains the
+    # charter's Network section lists. A builder's subagent once left its scratch files in /tmp, and nothing stopped it.
+    domains = [ln.strip("- ").strip() for ln in ch.get("network", "").splitlines() if ln.strip().startswith("-")]
+    fence = ["--settings", json.dumps({"sandbox": {"enabled": True, "autoAllowBashIfSandboxed": True,
+                                                   "allowUnsandboxedCommands": False, "network": {"allowedDomains": domains}}})]
     inbox, plant_file = root / "inbox.md", root / "plant.md"
     for line in a.plant:
         with plant_file.open("a") as f:
@@ -743,7 +796,8 @@ def run_cmd(a):
         t = time.time()
         d = claude(run, "regent", a.regent_model, ctx, cwd=project if look else root,
                    tools="Read,Grep,Glob,Bash" if look else "", allowed=("Read,Grep,Glob," + his_bash) if look else None,
-                   usd=SPOT_USD if look else None, system=system, schema=DECISION, who=life.root.name)["data"]
+                   usd=SPOT_USD if look else None, system=system, schema=DECISION, who=life.root.name,
+                   settings=SEALED + fence)["data"]
         S["blocking"] += time.time() - t
         S["since_look"] += 1
         if look:
@@ -801,7 +855,7 @@ def run_cmd(a):
         run.save(S)   # so the page shows what he asked for while the builder is still at it
         out = claude(run, "claude", a.model, S["handover"] + message, cwd=project, append=norms(),
                      session=S["session"], resume=S["started"], effort=a.effort, denied=deny,
-                     settings=["--strict-mcp-config", "--setting-sources", "project"],
+                     settings=["--strict-mcp-config", "--setting-sources", "project", *fence],
                      allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
         S["handover"], S["started"] = "", True
         S["session"] = out["session"] or S["session"]

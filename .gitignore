@@ -14,12 +14,6 @@ venv/
 # Agent tooling that is not part of this project.
 .serena/
 
-# The old harness's run output, 6MB of generated state, superseded by the
-# single harness. Its source under archive/ is tracked; this is not.
-/archive/run/
-/archive/runs/
-/archive/.build-report.md
-
 # Live state, written when a run is pointed at this repo rather than a project.
 /run/
 

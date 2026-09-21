@@ -74,11 +74,20 @@ spoon cycles.
 
 The charter is `<project>/.regent/charter.md` unless you pass one: a markdown
 file whose `##` headings the harness reads: Intent, Constraints, Refusals,
-Reserved, Budget, Tools, Check, Show. `examples/linkcheck.md` is a worked one.
+Reserved, Budget, Tools, Network, Check, Show. `examples/linkcheck.md` is a
+worked one.
 Constraints are the *starting* shape and he may change them, recording why.
 Refusals and Reserved bind him absolutely. Check and Show are shell commands
 run in your project after each sitting, which is how he sees the thing work
 without reading code.
+
+Both he and the builder work inside Claude Code's sandbox. A shell can write
+only inside the project and reach only the domains listed under `## Network`,
+one per `-` line. No Network section means no network.
+
+The CLI tells every model today's date, your email and the machine it runs on.
+He and the night runs never see that: their calls go through a pass-through in
+the harness that drops those reminders. The builder's calls go direct.
 
 Re-running the same project resumes the last unfinished run at its next day.
 `--new` starts over.
@@ -116,7 +125,7 @@ regent/
   regent.py                  the harness, one file
   owners/<name>/             bible.md, disposition.json, events.md (tracked), life.db (not)
   examples/                  worked charters
-  archive/                   the old harness, as a parts bin
+  watch.html                 the live page
 
 ~/.regent/                   $REGENT_HOME, or --runs
   owners/<name>/             owners you cast
@@ -132,12 +141,12 @@ project starts with no memory of it.
 
 ## A note on scope
 
-`archive/` is the first version of this: 10,914 lines of source, 7,670 of
-tests, 1,758 of prompts, a 592-line config holding **224 tunables**, 17 model
-roles each with its own prompt and schema, three storage layers, and a
-hand-rolled `===RETURN===` wire protocol propped up by a plugin skill. It
-worked. Nobody could tune it.
+The first version of this was 10,914 lines of source, 7,670 of tests, 1,758 of
+prompts, a 592-line config holding **224 tunables**, 17 model roles each with
+its own prompt and schema, three storage layers, and a hand-rolled wire
+protocol propped up by a plugin skill. It worked. Nobody could tune it.
 
-The whole of that is now one file under a thousand lines, a fifth of it prompts, because almost everything it did is
-something Claude Code already does. The harness's job is the owner, and the
-owner is a life, a memory and a dream. Read the archive before adding a module.
+All of that is now one file and one page, because almost everything it did is
+something Claude Code already does: sessions, subagents, permissions, the
+sandbox, structured output. The harness's job is the owner, and the owner is a
+life, a memory and the nights. Think of that before adding a module.

@@ -172,7 +172,7 @@ function toolLines(tools) { return `<div class="tools">${tools.map(t => `<span><
 
 function build(D) {
   const M = {days: [], spend: {}, total: 0, meta: null, summary: null, resumes: 0, caught: 0, kept: 0, errors: [], tools: []};
-  const byN = new Map(), hasDawn = D.events.some(e => e.kind === 'dawn');
+  const byN = new Map();
   const day = n => { if (!byN.has(n)) { const d = {n, mood: null, sittings: [], notes: [], text: D.days[n] || '', wrote: false,
       night: {drifts: [], spoons: [], step: null, failed: [], memory: false, cost: 0, any: false}}; byN.set(n, d); M.days.push(d); } return byN.get(n); };
   let cur = null, sit = null, ownTools = [], look = null, notes = [];
@@ -192,7 +192,7 @@ function build(D) {
       if (d.role === 'claude' && sit) { sit.cost += d.cost || 0; sit.secs = sit.secs ?? d.seconds; }
       if (cur && ['day', 'memory', 'saturate', 'drift', 'sift', 'step_back'].includes(d.role)) { cur.night.cost += d.cost || 0; cur.night.any = true; if (d.role === 'memory') cur.night.memory = true; }
       if (d.error) M.errors.push(`${d.role}: ${d.error}`); }
-    else if (e.kind === 'day') { if (!hasDawn && (!cur || cur.n !== d.n)) cur = day(d.n); const t = cur || day(d.n);
+    else if (e.kind === 'day') { const t = cur || day(d.n);
       t.text = D.days[d.n] || t.text; t.wrote = true; t.night.any = true; if (t.mood == null) t.mood = d.mood; }
     else if (e.kind === 'drift') { if (cur) { cur.night.drifts.push(d); cur.night.any = true; } }
     else if (e.kind === 'spoon') { if (cur) { cur.night.spoons.push(d); cur.night.any = true; } M.caught += d.caught || 0; M.kept += d.kept || 0; }
@@ -200,8 +200,6 @@ function build(D) {
     else if (e.kind === 'summary') M.summary = d;
     else if (e.kind.endsWith('_failed')) { if (cur) { cur.night.failed.push({what: e.kind.replace('_failed', ''), error: d.error}); cur.night.any = true; } }
   }
-  const recs = Object.fromEntries((D.state.records || []).map(r => [r.turn, r]));
-  for (const dd of M.days) for (const s of dd.sittings) if (!s.reply && recs[s.n]) s.reply = recs[s.n].reply;
   M.pendingOwn = ownTools; M.last = D.events[D.events.length - 1] || null; M.cur = cur;
   return M;
 }
