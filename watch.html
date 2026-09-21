@@ -159,7 +159,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const usd = x => '$' + (x || 0).toFixed(2);
 const sgn = x => (x > 0 ? '+' : '') + Number(x).toFixed(2);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const GROUP = {claude:'The builder', regent:'His sittings', step_back:'Stepping back', day:'The day writer', memory:'Memory',
+const GROUP = {claude:'The builder', regent:'Their sittings', step_back:'Stepping back', day:'The day writer', memory:'Memory',
   saturate:'The spoon', drift:'The spoon', sift:'The spoon', stake:'Setting up', events:'Setting up', cast:'Setting up'};
 
 function more(text, key, n = 300, cls = 'pre') {
@@ -182,8 +182,8 @@ function build(D) {
     else if (e.kind === 'dawn') { cur = day(d.day); cur.mood = d.mood; cur.planned = d.sittings; sit = null; }
     else if (e.kind === 'tool') { M.tools.push(d); if (d.who === 'claude') { if (sit) sit.tools.push(d); } else ownTools.push(d); }
     else if (e.kind === 'look') look = d;
-    else if (e.kind === 'human_said') notes.push('You told him: ' + d.text);
-    else if (e.kind === 'plant') notes.push('Something you planted crossed his path.');
+    else if (e.kind === 'human_said') notes.push('You told them: ' + d.text);
+    else if (e.kind === 'plant') notes.push('Something you planted crossed their path.');
     else if (e.kind === 'sitting') { cur = day(d.day); sit = {...d, tools: [], ownTools, look, notes, reply: null, check: null, cost: 0, secs: null};
       ownTools = []; look = null; notes = []; cur.sittings.push(sit); }
     else if (e.kind === 'reply') { if (sit) { sit.reply = d.text; sit.secs = d.seconds; } }
@@ -209,9 +209,9 @@ function nowLine(D, M) {
   if (!e) return 'Nothing has happened yet.';
   if (S.finished) return 'The run is over.';
   const n = M.cur ? M.cur.n : '';
-  if (e.kind === 'dawn') return `Morning of day ${n}. ${e.d.sittings ? 'He is reading what came back and deciding what to say.' : 'He has no time for the project today.'}`;
-  if (e.kind === 'tool' && e.d.who !== 'claude') return 'He is trying the thing himself.';
-  if (e.kind === 'look') return 'He has had his look and is deciding what to say.';
+  if (e.kind === 'dawn') return `Morning of day ${n}. ${e.d.sittings ? 'They are reading what came back and deciding what to say.' : 'They have no time for the project today.'}`;
+  if (e.kind === 'tool' && e.d.who !== 'claude') return 'They are trying the thing themselves.';
+  if (e.kind === 'look') return 'They have had their look and are deciding what to say.';
   if (e.kind === 'sitting' || (e.kind === 'tool' && e.d.who === 'claude')) {
     const s = M.cur && M.cur.sittings[M.cur.sittings.length - 1];
     return `The builder is working on sitting ${s ? s.n : ''}. ${s ? plural(s.tools.length, 'tool use') + ' so far.' : ''}`; }
@@ -234,17 +234,17 @@ function charts(D, M) {
   const out = [], days = M.days, S = D.state;
   if (days.length) {
     const x = xAt(days.length), y = yAt(-1, 1), pts = days.map((d, i) => [x(i), y(d.mood ?? 0), d]);
-    out.push(chart('His mood', 'Rolled each morning, leaning on the day before. A brass mark is a night the spoon fell.',
+    out.push(chart('Their mood', 'Rolled each morning, leaning on the day before. A brass mark is a night the spoon fell.',
       frame([[1, '+1'], [0, '0'], [-1, '−1']], y, days.map(d => d.n), x) +
       `<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}"/>` +
       pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--ink)"><title>day ${p[2].n}: mood ${sgn(p[2].mood ?? 0)}</title></circle>` +
         (p[2].night.spoons.length ? `<circle cx="${p[0]}" cy="${H - B + 3}" r="3.2" fill="var(--brass)"><title>the spoon fell after day ${p[2].n}</title></circle>` : '')).join('')));
     const top = Math.max(60, ...days.map(d => d.sittings.reduce((a, s) => a + s.minutes, 0))), yb = yAt(0, top), bw = Math.min(26, (W - L - R) / days.length * 0.6);
-    out.push(chart('The time he gave it', 'Minutes a day, one block a sitting. Hatched blocks are sittings where he tried it himself.',
+    out.push(chart('The time they gave it', 'Minutes a day, one block a sitting. Hatched blocks are sittings where they tried it themselves.',
       `<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--builder)"/><line x1="0" y1="0" x2="0" y2="5" stroke="var(--surface)" stroke-width="2"/></pattern></defs>` +
       frame([[top, Math.round(top)], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], yb, days.map(d => d.n), x) +
       days.map((d, i) => { let acc = 0; return d.sittings.length ? d.sittings.map(s => { const y1 = yb(acc + s.minutes), h = yb(acc) - y1; acc += s.minutes;
-        return `<rect x="${x(i) - bw / 2}" y="${y1 + 1}" width="${bw}" height="${Math.max(1, h - 1)}" fill="${s.look ? 'url(#hatch)' : 'var(--builder)'}"><title>sitting ${s.n}: ${s.minutes} min${s.look ? ', tried it himself' : ''}</title></rect>`; }).join('')
+        return `<rect x="${x(i) - bw / 2}" y="${y1 + 1}" width="${bw}" height="${Math.max(1, h - 1)}" fill="${s.look ? 'url(#hatch)' : 'var(--builder)'}"><title>sitting ${s.n}: ${s.minutes} min${s.look ? ', tried it themselves' : ''}</title></rect>`; }).join('')
         : `<text x="${x(i)}" y="${yb(0) - 5}" text-anchor="middle">none</text>`; }).join('')));
   }
   const sits = days.flatMap(d => d.sittings);
@@ -252,7 +252,7 @@ function charts(D, M) {
     let asked = 0, built = 0; const rows = sits.map(s => { asked += (s.new || []).length; built += (s.built || []).length; return {s, asked, built}; });
     const top = Math.max(4, asked), x = xAt(rows.length), y = yAt(0, top), step = k => rows.map((r, i) => (i ? `${x(i)},${y(rows[i - 1][k])} ` : '') + `${x(i)},${y(r[k])}`).join(' ');
     const night = (S.reqs || []).filter(q => q.from_dream).length;
-    out.push(chart('What he asked for, what got built', `Counted at each sitting. ${night ? plural(night, 'requirement') + ' came from the nights.' : 'None has come from the nights yet.'}`,
+    out.push(chart('What they asked for, what got built', `Counted at each sitting. ${night ? plural(night, 'requirement') + ' came from the nights.' : 'None has come from the nights yet.'}`,
       frame([[top, top], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], y, rows.map(r => 's' + r.s.n), x) +
       `<polyline fill="none" stroke="var(--ink)" stroke-width="1.6" points="${step('asked')}"/><polyline fill="none" stroke="var(--good)" stroke-width="1.6" points="${step('built')}"/>` +
       rows.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.asked)}" r="3" fill="var(--ink)"><title>sitting ${r.s.n}: ${r.asked} asked for</title></circle><circle cx="${x(i)}" cy="${y(r.built)}" r="3" fill="var(--good)"><title>sitting ${r.s.n}: ${r.built} built</title></circle>`).join('') +
@@ -276,7 +276,7 @@ function charts(D, M) {
 /* ---------- daybook ---------- */
 function sitting(s) {
   const chips = [`<span class="pill">${s.minutes} min</span>`, `<span class="pill ${s.verdict === 'accept' ? 'good' : s.verdict === 'reject' ? 'crit' : ''}">${esc(s.verdict)}</span>`];
-  if (s.look) chips.push('<span class="pill bld">tried it himself</span>');
+  if (s.look) chips.push('<span class="pill bld">tried it themselves</span>');
   if (s.challenged) chips.push('<span class="pill">challenged</span>');
   if (s.constrained) chips.push('<span class="pill">set a limit</span>');
   if ((s.new || []).length) chips.push(`<span class="pill">${plural(s.new.length, 'new requirement')}</span>`);
@@ -286,7 +286,7 @@ function sitting(s) {
   if (s.trust != null) chips.push(`<span class="pill">trust ${Number(s.trust).toFixed(2)}</span>`);
   if (s.done) chips.push('<span class="pill good">says it is done</span>');
   let own = '';
-  if (s.look || s.ownTools.length) own = `<div class="note">${s.look ? `He ran it himself: ${esc((s.look.ran || []).join(' · '))}. ${s.look.matched ? 'What he saw matched what he had been told.' : '<b>What he saw did not match what he had been told.</b>'}` : ''}${s.ownTools.length ? fold(plural(s.ownTools.length, 'thing') + ' he did', toolLines(s.ownTools), `own${s.n}`) : ''}</div>`;
+  if (s.look || s.ownTools.length) own = `<div class="note">${s.look ? `They ran it themselves: ${esc((s.look.ran || []).join(' · '))}. ${s.look.matched ? 'What they saw matched what they had been told.' : '<b>What they saw did not match what they had been told.</b>'}` : ''}${s.ownTools.length ? fold(plural(s.ownTools.length, 'thing') + ' they did', toolLines(s.ownTools), `own${s.n}`) : ''}</div>`;
   const waiting = s.reply == null;
   const builder = `<div><span class="who b">The builder${s.secs ? ` · ${(s.secs / 60).toFixed(1)} min` : ''}${s.cost ? ` · ${usd(s.cost)}` : ''}</span>` +
     (waiting ? `<p class="none">Still working. ${plural(s.tools.length, 'tool use')} so far.</p>` : more(s.reply, `rep${s.n}`, 360)) +
@@ -294,7 +294,7 @@ function sitting(s) {
     (s.check ? `<div class="chips"><span class="pill ${s.check.ok ? 'good' : 'crit'}">check ${s.check.ok ? 'passed' : 'FAILED'}</span></div>${fold('What the check printed', `<pre class="out">${esc(s.check.tail)}</pre>`, `chk${s.n}`)}` : '') + '</div>';
   return `<article class="sit"><div><div class="sithead"><b>Sitting ${s.n}</b><div class="chips">${chips.join('')}</div></div>` +
     s.notes.map(n => `<p class="note">${esc(n)}</p>`).join('') +
-    `<p class="stance">${esc(s.stance_line)}</p>${own}<span class="who">He wrote</span>${more(s.message, `msg${s.n}`)}</div>${builder}</article>`;
+    `<p class="stance">${esc(s.stance_line)}</p>${own}<span class="who">They wrote</span>${more(s.message, `msg${s.n}`)}</div>${builder}</article>`;
 }
 
 function spoon(sp, k, ideas) {
@@ -304,9 +304,9 @@ function spoon(sp, k, ideas) {
   const linkRow = (ln, i) => `<div class="link"><span class="meta">#${i} · ${esc(ln.kind)} · ${(ln.anchors || []).map(a => `<span title="${esc(el[a] || '')}">${esc(a)}</span>`).join(' ')} → ${esc(ln.other)}</span><span>${esc(ln.text)}</span>${ln.mechanism ? `<span class="mech">Mechanism: ${esc(ln.mechanism)}</span>` : ''}</div>`;
   const cards = sp.candidates.map((c, j) => { const me = ideas[c.text] || {}, st = me.status || 'pending';
     const src = (c.from_indexes || []).filter(i => links[i]);
-    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for him' : 'he ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
-      `<p class="txt">${esc(c.text)}</p><p class="sub"><b>How he would see it work.</b> ${esc(c.test)}</p><p class="sub"><b>Why it might fail.</b> ${esc(c.why_it_might_fail)}</p>` +
-      (me.why ? `<p class="sub"><b>Why he declined.</b> ${esc(me.why)}</p>` : '') +
+    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for them' : 'they ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
+      `<p class="txt">${esc(c.text)}</p><p class="sub"><b>How they would see it work.</b> ${esc(c.test)}</p><p class="sub"><b>Why it might fail.</b> ${esc(c.why_it_might_fail)}</p>` +
+      (me.why ? `<p class="sub"><b>Why they declined.</b> ${esc(me.why)}</p>` : '') +
       (src.length ? fold(`Where it came from: ${plural(src.length, 'link')}`, src.map(i => linkRow(links[i], i)).join(''), `src${k}-${j}`) : '') + '</div>'; }).join('');
   return `<div class="motifs">${list('Motifs', m.motifs)}${list('Tensions', m.tensions)}${list('Questions', m.questions)}</div>${cards}` +
     fold(`All ${plural(links.length, 'link')} caught that night`, links.map(linkRow).join(''), `links${k}`);
@@ -318,12 +318,12 @@ function night(d, ideas) {
   if (d.wrote) chips.push('<span class="pill">the day was written</span>');
   if (n.memory) chips.push('<span class="pill">the project half forgotten</span>');
   chips.push(n.spoons.length ? '<span class="pill brass">the spoon fell</span>' : '<span class="pill">no spoon</span>');
-  if (n.step) chips.push('<span class="pill good">he stepped back</span>');
+  if (n.step) chips.push('<span class="pill good">they stepped back</span>');
   n.failed.forEach(f => chips.push(`<span class="pill crit" title="${esc(f.error)}">${esc(f.what)} failed</span>`));
   const written = n.drifts.reduce((a, x) => a + x.written, 0), caught = n.drifts.reduce((a, x) => a + x.caught, 0), kept = n.spoons.reduce((a, x) => a + (x.kept || 0), 0);
   const stages = n.spoons.length || n.drifts.length ? `<div class="stages">${n.drifts.map(x => `<div class="stage"><b>${x.caught}/${x.written}</b><span>drift on ${esc(x.model)}, asked for about ${x.asked}</span></div>`).join('')}<div class="stage"><b>${caught}</b><span>links held of ${written} written</span></div><div class="stage"><b>${kept}</b><span>kept by Sift for the morning</span></div></div>` : '';
   const step = n.step ? `<div><h3>Stepping back</h3></div><ul>${(n.step.observations || []).map(o => `<li>${esc(o)}</li>`).join('')}</ul>` +
-    ((n.step.notes || []).length ? fold('His notes for you', `<ul>${n.step.notes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>`, `stepn${d.n}`) : '') : '';
+    ((n.step.notes || []).length ? fold('Their notes for you', `<ul>${n.step.notes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>`, `stepn${d.n}`) : '') : '';
   return `<div class="night"><div class="sithead"><h3>Night after day ${d.n}</h3><div class="chips">${chips.join('')}</div><span class="pill">${usd(n.cost)}</span></div>${stages}${n.spoons.map((sp, i) => spoon(sp, `${d.n}-${i}`, ideas)).join('')}${step}</div>`;
 }
 
@@ -339,10 +339,10 @@ function rail(D, M) {
   const ul = a => (a || []).length ? `<ul>${a.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="none">Nothing yet.</p>';
   return sec(`Requirements · ${reqs.filter(q => q.status === 'built').length} built of ${reqs.length}`, reqs.length ? reqs.map(q =>
       `<div class="req"><span class="id">${esc(q.id)}</span><div><div class="chips"><span class="pill ${q.status === 'built' ? 'good' : ''}">${esc(q.status)}</span>${q.from_dream ? '<span class="pill brass">from a night</span>' : ''}<span class="pill">sitting ${q.turn}</span></div><p>${esc(q.text)}</p><p class="t">${esc(q.test || '')}</p></div></div>`).join('') : '<p class="none">None yet.</p>') +
-    sec('Questions for you', (S.escalations || []).length ? ul(S.escalations.map(e => `Sitting ${e.turn}: ${e.question}`)) : '<p class="none">None. He has not needed you.</p>') +
-    sec('Limits he changed', (S.amended || []).length ? ul(S.amended.map(x => `Sitting ${x.turn}: was "${x.constraint}", now "${x.now}". ${x.why}`)) : '<p class="none">None.</p>') +
-    sec('His ways of working', ul(S.ways)) + sec('His notes for you', ul(S.human_notes)) +
-    sec('What he remembers of the project', D.memory ? more(D.memory, 'memory', 380) : '<p class="none">Nothing has been forgotten into memory yet.</p>');
+    sec('Questions for you', (S.escalations || []).length ? ul(S.escalations.map(e => `Sitting ${e.turn}: ${e.question}`)) : '<p class="none">None. They have not needed you.</p>') +
+    sec('Limits they changed', (S.amended || []).length ? ul(S.amended.map(x => `Sitting ${x.turn}: was "${x.constraint}", now "${x.now}". ${x.why}`)) : '<p class="none">None.</p>') +
+    sec('Their ways of working', ul(S.ways)) + sec('Their notes for you', ul(S.human_notes)) +
+    sec('What they remember of the project', D.memory ? more(D.memory, 'memory', 380) : '<p class="none">Nothing has been forgotten into memory yet.</p>');
 }
 
 function render() {
@@ -358,7 +358,7 @@ function render() {
   document.getElementById('runname').textContent = D.run;
   document.getElementById('title').textContent = project ? `${owner} on ${project}` : 'Waiting for the first day';
   const built = (S.reqs || []).filter(q => q.status === 'built').length, taken = (S.ideas || []).filter(i => i.status === 'taken').length;
-  document.getElementById('lede').textContent = M.days.length ? `${plural(M.days.length, 'day')} of his life so far${meta.days ? ` of ${Math.max(meta.days, S.days || 0)} planned` : ''}, at about ${meta.turns_per_day ?? '?'} sittings a day. He has sat down ${plural(sits.length, 'time')}. The spoon has fallen on ${plural(M.days.filter(d => d.night.spoons.length).length, 'night')} and left him ${plural((S.ideas || []).length, 'idea')}, of which he took ${taken}.` : 'The run has started. Nothing has been lived yet.';
+  document.getElementById('lede').textContent = M.days.length ? `${plural(M.days.length, 'day')} of their life so far${meta.days ? ` of ${Math.max(meta.days, S.days || 0)} planned` : ''}, at about ${meta.turns_per_day ?? '?'} sittings a day. They have sat down ${plural(sits.length, 'time')}. The spoon has fallen on ${plural(M.days.filter(d => d.night.spoons.length).length, 'night')} and left them ${plural((S.ideas || []).length, 'idea')}, of which they took ${taken}.` : 'The run has started. Nothing has been lived yet.';
   const lastCheck = [...sits].reverse().find(s => s.check);
   document.getElementById('facts').innerHTML = [[M.days.length, 'days lived'], [sits.length, 'sittings'], [`${built}/${(S.reqs || []).length}`, 'requirements built'],
     [`${M.kept}/${M.caught}`, 'links kept of caught'], [`${taken}/${(S.ideas || []).length}`, 'night ideas taken'], [S.trust != null ? Number(S.trust).toFixed(2) : '—', 'trust in the builder'],

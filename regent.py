@@ -582,7 +582,8 @@ def snapshot(root: Path) -> dict:
 def watch_cmd(a, root: Path | None = None, background: bool = False):
     """One page, two uses: served live from the ledger, or written out whole with the run inside it."""
     root = root or latest_run(a.run)
-    page = (Path(__file__).resolve().parent / "watch.html").read_text()
+    source = Path(__file__).resolve().parent / "watch.html"
+    page = source.read_text()
     if getattr(a, "export", None):
         data = json.dumps(snapshot(root), ensure_ascii=False).replace("</", "<\\/")
         page = page.replace("<title>Regent Daybook", f"<title>{root.name.rsplit('-', 2)[0]} daybook")
@@ -595,7 +596,7 @@ def watch_cmd(a, root: Path | None = None, background: bool = False):
             live = self.path.startswith("/data")
             body = (json.dumps(snapshot(root)) if live else
                     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-                    + page).encode()
+                    + source.read_text()).encode()   # read each time, so an edit to the page shows on refresh
             self.send_response(200)
             self.send_header("Content-Type", "application/json" if live else "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
