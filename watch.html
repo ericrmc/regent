@@ -45,6 +45,9 @@ h1{font-family:var(--serif);font-weight:500;font-size:clamp(30px,4.6vw,46px);lin
 .fact span{font-size:12px;color:var(--muted)}
 .now{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--builder);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 .now .what{font-weight:500}
+.askhuman{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--crit);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.askhuman .what{font-weight:600;color:var(--crit)}
+.notion{display:flex;flex-direction:column;gap:5px;padding-block:8px;border-top:1px solid var(--rule);font-size:13.5px}
 .tail{font-family:var(--mono);font-size:12px;color:var(--ink2);display:flex;flex-direction:column;gap:2px;max-height:150px;overflow:auto}
 .tail span{overflow-wrap:anywhere}.tail em{font-style:normal;color:var(--muted)}
 h2{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.15}
@@ -57,7 +60,8 @@ section{display:flex;flex-direction:column;gap:16px}
 .chart svg text{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
 .bars{display:grid;grid-template-columns:max-content 1fr max-content;gap:6px 10px;align-items:center;font-size:13px;margin-top:6px}
 .bars .n{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink2)}
-.bar{height:9px;background:var(--sunk);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--builder);border-radius:2px}
+.bar{height:9px;background:var(--sunk);border-radius:2px;overflow:hidden;position:relative}.bar i{display:block;height:100%;background:var(--builder);border-radius:2px}
+.bar b{position:absolute;top:0;bottom:0;width:1px;background:var(--ink2);opacity:.6}
 .bar i.b{background:var(--brass)}.bar i.m{background:var(--muted)}
 .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
 @media (min-width:980px){.cols{grid-template-columns:minmax(0,1fr) 340px;align-items:start}}
@@ -134,6 +138,7 @@ footer{color:var(--muted);font-size:12px;font-family:var(--mono);border-top:1px 
     <div class="eyebrow"><span id="runname">regent</span><span class="live" id="live"><i></i><span id="livetxt">snapshot</span></span></div>
     <h1 id="title">Waiting for the first day</h1>
     <p class="lede" id="lede"></p>
+    <div class="askhuman" id="askhuman" hidden></div>
     <div class="now" id="now" hidden></div>
     <div class="facts" id="facts"></div>
   </header>
@@ -161,6 +166,14 @@ const sgn = x => (x > 0 ? '+' : '') + Number(x).toFixed(2);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const GROUP = {claude:'The builder', answer:'The builder', regent:'Their sittings', step_back:'Stepping back', day:'The day writer', memory:'Memory',
   saturate:'The spoon', drift:'The spoon', sift:'The spoon', stake:'Setting up', events:'Setting up', cast:'Setting up'};
+const KIND_LABEL = {ask: 'a thing to ask for', doubt: 'a doubt', wish: 'a wish', worry: 'a worry'};
+const IDEA_STATUS = {pending: {cls: '', label: 'waiting for them'}, taken: {cls: 'good', label: 'they took it'},
+  answered: {cls: 'good', label: 'they answered it'}, declined: {cls: 'crit', label: 'they declined it'},
+  'set aside': {cls: 'brass', label: 'they set it aside, not now'}};
+const MOVE_LABEL = {toward: 'moving toward it', turns: 'took a turn', against: 'moving against it',
+  ends: 'came to an end', 'came to mind': 'came to mind', 'drags on': 'was due to end, and dragged on'};
+const WHERE_LABEL = {woke: 'they woke with it', sitting: 'came to them just now, reading this', away: 'came to them away from it'};
+const ALTITUDE_LABEL = {proof: 'wanting proof', direction: 'on direction'};
 
 function more(text, key, n = 300, cls = 'pre') {
   text = String(text || '').trim();
@@ -171,22 +184,55 @@ function fold(label, inner, key) { return `<details class="fold" data-k="${esc(k
 function toolLines(tools) { return `<div class="tools">${tools.map(t => `<span><em>${esc(t.name)}</em> ${esc(t.what)}</span>`).join('')}</div>`; }
 
 function build(D) {
-  const M = {days: [], spend: {}, total: 0, meta: null, summary: null, resumes: 0, caught: 0, kept: 0, errors: [], tools: []};
-  const byN = new Map();
+  const M = {days: [], spend: {}, total: 0, meta: null, summary: null, resumes: 0, caught: 0, kept: 0, errors: [], tools: [], allTaken: [], threads: new Map(),
+    fields: [], lastFieldIdx: -1, arrivalByLabel: new Map(), arrivalDots: [], pictures: [], forHuman: []};
+  const byN = new Map(), sitByN = new Map();
   const day = n => { if (!byN.has(n)) { const d = {n, mood: null, sittings: [], notes: [], text: D.days[n] || '', wrote: false,
-      night: {drifts: [], spoons: [], step: null, failed: [], memory: false, cost: 0, any: false}}; byN.set(n, d); M.days.push(d); } return byN.get(n); };
-  let cur = null, sit = null, ownTools = [], look = null, asked = null, askTools = [], notes = [];
+      night: {drifts: [], spoons: [], step: null, failed: [], memory: false, cost: 0, any: false, arrivals: [], quiet: []}}; byN.set(n, d); M.days.push(d); } return byN.get(n); };
+  // The read-back can land in the ledger before or after the sitting it belongs to, so it is held here
+  // until the sitting turns up, rather than assumed to already exist.
+  const pendRb = new Map(), pendRbTaken = new Map(), pendRbTools = new Map();
+  let cur = null, sit = null, ownTools = [], look = null, asked = null, askTools = [], answerTakens = [], rbTools = [], notes = [], sitArrival = null;
   for (const e of D.events) {
     const d = e.d;
     if (e.kind === 'start') { M.meta = M.meta || d; if (d.resumed) M.resumes++; }
     else if (e.kind === 'dawn') { cur = day(d.day); cur.mood = d.mood; cur.planned = d.sittings; sit = null; }
-    else if (e.kind === 'tool') { M.tools.push(d); if (d.who === 'claude') { if (sit) sit.tools.push(d); } else if (d.who === 'answer') askTools.push(d); else ownTools.push(d); }
+    else if (e.kind === 'tool') { M.tools.push(d);
+      if (d.who === 'claude') { if (sit) sit.tools.push(d); }
+      else if (d.who === 'answer') askTools.push(d);
+      else if (d.who === 'readback') rbTools.push(d);
+      else ownTools.push(d); }
     else if (e.kind === 'look') look = d;
-    else if (e.kind === 'asked') asked = {...d, tools: askTools};
-    else if (e.kind === 'human_said') notes.push('You told them: ' + d.text);
+    else if (e.kind === 'asked') asked = {...d, tools: askTools, takens: answerTakens};
+    else if (e.kind === 'taken') { M.allTaken.push(d);
+      // of:'reply' with n:k reads the reply of sitting k-1, already built by now: attach it there so raw and taken sit together.
+      if (d.of === 'reply') { const prev = sitByN.get(d.n - 1); if (prev) prev.replyTaken = d; }
+      else if (d.of === 'answer') answerTakens.push(d);
+      else if (d.of === 'readback') { const s2 = sitByN.get(d.n); if (s2) s2.rbTaken = d; else pendRbTaken.set(d.n, d); } }
+    else if (e.kind === 'readback') { const s2 = sitByN.get(d.n);
+      if (s2) { s2.rb = d; s2.rbTools = rbTools; } else { pendRb.set(d.n, d); pendRbTools.set(d.n, rbTools); }
+      rbTools = []; }
+    else if (e.kind === 'take_failed' || e.kind === 'readback_failed') { /* a crossing reading failed mid-sitting; not a night event */ }
+    else if (e.kind === 'field_failed') { // absorbed quietly: never a night failure chip
+      if (d.when === 'sitting') notes.push('Something under notice could not be weighed just now.');
+      else if (cur) { cur.night.quiet.push('Something under notice could not be weighed that night.'); cur.night.any = true; } }
+    else if (e.kind === 'arrival_failed') { // absorbed quietly: never a night failure chip
+      if (d.where === 'sitting') notes.push('A notion that arrived could not be judged.');
+      else if (cur) { cur.night.quiet.push('A notion that arrived could not be judged.'); cur.night.any = true; } }
+    else if (e.kind === 'field') { M.fields.push(d); M.lastFieldIdx = M.fields.length - 1; }
+    else if (e.kind === 'arrival') {
+      if (d.where === 'sitting') sitArrival = d;
+      else if (cur) { cur.night.arrivals.push(d); cur.night.any = true; }
+      if (d.idea) M.arrivalByLabel.set(d.idea, d);
+      if (d.notion && d.notion.id) M.arrivalDots.push({notionId: d.notion.id, fieldIdx: M.lastFieldIdx, idea: d.idea}); }
+    else if (e.kind === 'picture') { M.pictures.push(d); if (cur) cur.night.any = true; }
+    else if (e.kind === 'for_human') M.forHuman.push({...d, answered: false});
+    else if (e.kind === 'human_said') { notes.push('You told them: ' + d.text); M.forHuman.forEach(q => q.answered = true); }
     else if (e.kind === 'plant') notes.push('Something you planted crossed their path.');
-    else if (e.kind === 'sitting') { cur = day(d.day); sit = {...d, tools: [], ownTools, look, asked: d.asked ? asked : null, notes, reply: null, check: null, cost: 0, secs: null};
-      ownTools = []; look = null; asked = null; askTools = []; notes = []; cur.sittings.push(sit); }
+    else if (e.kind === 'sitting') { cur = day(d.day); sit = {...d, tools: [], ownTools, look, asked: d.asked ? asked : null, notes, arrival: sitArrival, reply: null, check: null, cost: 0, secs: null};
+      if (pendRb.has(sit.n)) { sit.rb = pendRb.get(sit.n); sit.rbTools = pendRbTools.get(sit.n) || []; pendRb.delete(sit.n); pendRbTools.delete(sit.n); }
+      if (pendRbTaken.has(sit.n)) { sit.rbTaken = pendRbTaken.get(sit.n); pendRbTaken.delete(sit.n); }
+      ownTools = []; look = null; asked = null; askTools = []; answerTakens = []; notes = []; sitArrival = null; cur.sittings.push(sit); sitByN.set(sit.n, sit); }
     else if (e.kind === 'reply') { if (sit) { sit.reply = d.text; sit.secs = d.seconds; } }
     else if (e.kind === 'check') { if (sit) sit.check = d; }
     else if (e.kind === 'call') { const g = GROUP[d.role] || 'Other'; M.spend[g] = (M.spend[g] || 0) + (d.cost || 0); M.total += d.cost || 0;
@@ -194,7 +240,9 @@ function build(D) {
       if (cur && ['day', 'memory', 'saturate', 'drift', 'sift', 'step_back'].includes(d.role)) { cur.night.cost += d.cost || 0; cur.night.any = true; if (d.role === 'memory') cur.night.memory = true; }
       if (d.error) M.errors.push(`${d.role}: ${d.error}`); }
     else if (e.kind === 'day') { const t = cur || day(d.n);
-      t.text = D.days[d.n] || t.text; t.wrote = true; t.night.any = true; if (t.mood == null) t.mood = d.mood; }
+      t.text = D.days[d.n] || t.text; t.wrote = true; t.night.any = true; if (t.mood == null) t.mood = d.mood;
+      t.when = d.when || ''; t.opened = d.opened || ''; t.pursuit = d.pursuit || ''; t.threads = d.threads || [];
+      for (const th of t.threads) M.threads.set(th.id, {...th, day: d.n}); }
     else if (e.kind === 'drift') { if (cur) { cur.night.drifts.push(d); cur.night.any = true; } }
     else if (e.kind === 'spoon') { if (cur) { cur.night.spoons.push(d); cur.night.any = true; } M.caught += d.caught || 0; M.kept += d.kept || 0; }
     else if (e.kind === 'step_back') { if (cur) { cur.night.step = d; cur.night.any = true; } }
@@ -202,6 +250,13 @@ function build(D) {
     else if (e.kind.endsWith('_failed')) { if (cur) { cur.night.failed.push({what: e.kind.replace('_failed', ''), error: d.error}); cur.night.any = true; } }
   }
   M.pendingOwn = ownTools; M.last = D.events[D.events.length - 1] || null; M.cur = cur;
+  // What they have of the trade's words, as of the latest sitting that said so, and when each word arrived.
+  const allSits = M.days.flatMap(x => x.sittings), lastWords = [...allSits].reverse().find(s => s.words);
+  M.words = lastWords ? (lastWords.words || []) : []; M.breath = lastWords ? lastWords.breath : null;
+  M.wordDay = {};
+  for (const t of M.allTaken) if ((t.learned || []).length) { const s2 = sitByN.get(t.n);
+    if (s2 && s2.day != null) for (const w of t.learned) if (!(w in M.wordDay)) M.wordDay[w] = s2.day; }
+  M.ideasByLabel = Object.fromEntries(((D.state && D.state.ideas) || []).map(i => [i.label, i]));
   return M;
 }
 
@@ -211,10 +266,12 @@ function nowLine(D, M) {
   if (S.finished) return 'The run is over.';
   const n = M.cur ? M.cur.n : '';
   if (e.kind === 'dawn') return `Morning of day ${n}. ${e.d.sittings ? 'They are reading what came back and deciding what to say.' : 'They have no time for the project today.'}`;
-  if (e.kind === 'tool' && e.d.who !== 'claude') return 'They are trying the thing themselves.';
+  if (e.kind === 'tool' && e.d.who !== 'claude' && e.d.who !== 'answer' && e.d.who !== 'readback') return 'They are trying the thing themselves.';
   if (e.kind === 'look') return 'They have had their look and are deciding what to say.';
   if (e.kind === 'tool' && e.d.who === 'answer') return 'The builder is answering their question about where it is up to.';
   if (e.kind === 'asked') return 'They have asked where it is up to and are deciding what to say.';
+  if (e.kind === 'tool' && e.d.who === 'readback') return 'The builder is reading back what they asked for, and may have questions before it starts.';
+  if (e.kind === 'readback') return 'The read-back is done. The builder is starting the work.';
   if (e.kind === 'sitting' || (e.kind === 'tool' && e.d.who === 'claude')) {
     const s = M.cur && M.cur.sittings[M.cur.sittings.length - 1];
     return `The builder is working on sitting ${s ? s.n : ''}. ${s ? plural(s.tools.length, 'tool use') + ' so far.' : ''}`; }
@@ -262,6 +319,20 @@ function charts(D, M) {
       rows.map((r, i) => `<circle cx="${x(i)}" cy="${y(r.asked)}" r="3" fill="var(--ink)"><title>sitting ${r.s.n}: ${r.asked} asked for</title></circle><circle cx="${x(i)}" cy="${y(r.built)}" r="3" fill="var(--good)"><title>sitting ${r.s.n}: ${r.built} built</title></circle>`).join('') +
       `<text x="${W - R}" y="${y(asked) - 7}" text-anchor="end" style="fill:var(--ink)">asked ${asked}</text><text x="${W - R}" y="${y(built) - 7}" text-anchor="end" style="fill:var(--good)">built ${built}</text>`));
   }
+  const bsits = sits.filter(s => s.borrowed != null);
+  if (bsits.length) {
+    const sameSits = bsits.filter(s => s.same != null), maxSame = sameSits.length ? Math.max(...sameSits.map(s => s.same * 100)) : 0;
+    const x = xAt(bsits.length), maxB = Math.max(...bsits.map(s => (s.borrowed || 0) * 100)), top = Math.max(10, Math.ceil(Math.max(maxB, maxSame) / 10) * 10), y = yAt(0, top);
+    const pts = bsits.map((s, i) => [x(i), y((s.borrowed || 0) * 100), s]);
+    const samePts = bsits.map((s, i) => s.same != null ? [x(i), y(s.same * 100), s] : null).filter(Boolean);
+    out.push(chart("How much of what they say is the builder's", "Share of their spoken words borrowed from the builder, each sitting they spoke. Hover a point for how code-ish it read."
+        + (samePts.length ? ' A faint dotted line is how much stayed the same as last time; hover it for a pushed sitting.' : ''),
+      frame([[top, top + '%'], [Math.round(top / 2), Math.round(top / 2) + '%'], [0, '0%']], y, bsits.map(s => 's' + s.n), x) +
+      (samePts.length > 1 ? `<polyline fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="2,3" points="${samePts.map(p => p[0] + ',' + p[1]).join(' ')}"/>` : '') +
+      samePts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="2" fill="var(--muted)"><title>sitting ${p[2].n}: same as before ${Math.round(p[2].same * 100)}%${p[2].push ? ' — pushed for more' : ''}</title></circle>`).join('') +
+      `<polyline fill="none" stroke="var(--builder)" stroke-width="1.6" points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}"/>` +
+      pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--builder)"><title>sitting ${p[2].n}: ${Math.round((p[2].borrowed || 0) * 100)}% borrowed${p[2].codeish != null ? `, ${p[2].codeish} code-ish` : ''}</title></circle>`).join('')));
+  }
   if (D.commits.length) {
     let acc = 0; const rows = D.commits.map(c => ({...c, lines: acc += c.plus - c.minus})), top = Math.max(10, ...rows.map(r => r.lines)), x = xAt(rows.length), y = yAt(0, top);
     const line = rows.map((r, i) => `${x(i)},${y(r.lines)}`).join(' ');
@@ -278,51 +349,133 @@ function charts(D, M) {
 }
 
 /* ---------- daybook ---------- */
-function sitting(s) {
+// The crossing: a reading of something the builder wrote, as it reached them — never the raw words first.
+function takenNote(t) {
+  if (!t) return '';
+  const bits = [`<p class="stance">${esc(t.taken)}</p>`];
+  if ((t.not_followed || []).length) bits.push(`<p class="note"><b>Did not follow:</b> ${t.not_followed.map(x => esc(x)).join('; ')}</p>`);
+  const nr = Array.isArray(t.not_reached) ? t.not_reached.filter(Boolean).join('; ') : t.not_reached;
+  if (nr) bits.push(`<p class="note"><b>Did not get to:</b> ${esc(nr)}</p>`);
+  if ((t.picked_up || []).length) bits.push(`<p class="note">Words they leaned on: ${t.picked_up.map(w => esc(w)).join(', ')}.</p>`);
+  if ((t.learned || []).length) bits.push(`<p class="note">Learned ${plural(t.learned.length, 'word')}: ${t.learned.map(w => esc(w)).join(', ')}.</p>`);
+  return bits.join('');
+}
+function readbackNote(s) {
+  const rb = s.rb; if (!rb) return '';
+  const readings = (rb.readings || []).map(r => `<div class="req"><span class="id">${esc(r.id || '')}</span><div><p><b>${esc(r.name)}</b></p>` +
+    `<p>${esc(r.spec)}</p>${r.test ? `<p class="t">${esc(r.test)}</p>` : ''}</div></div>`).join('');
+  const questions = (rb.questions || []).length ? `<div>${rb.questions.map(q => `<span class="who b">The builder asked</span><p>${esc(q)}</p>`).join('')}` +
+    (rb.said ? `<span class="who">They said</span><p class="stance">${esc(rb.said)}</p>` : '') + '</div>' : '';
+  const misreads = (rb.misread || []).map(m => `<p><b>Misread:</b> ${esc(m.name)}. <span class="t">${esc(m.what)}</span></p>`).join('');
+  return `<span class="who b">The read-back</span>${takenNote(s.rbTaken)}${readings}${questions}${misreads}` +
+    ((s.rbTools || []).length ? fold(plural(s.rbTools.length, 'thing') + ' the builder looked at for the read-back', toolLines(s.rbTools), `rbtools${s.n}`) : '');
+}
+// What fed a notion, day by day and stream by stream — its dossier, shuffled and anonymous to Sift but not to the page.
+function feedFold(notion, key, cls) {
+  const fed = (notion && notion.fed) || [];
+  if (!fed.length) return '';
+  return fold('What fed it', fed.map(f => `<p class="${cls}">day ${esc(f.day)} · ${esc(f.stream)} — ${esc(f.what)}</p>`).join(''), key);
+}
+// An arrival read into a sitting: it came to them at the desk, out of what they had just read.
+function arrivalNote(a, M, key) {
+  const wl = WHERE_LABEL[a.where] || a.where, n = a.notion || {}, dossier = feedFold(n, key, 't');
+  if (!a.idea) return `<div class="note"><span class="who">Something stirring</span><p>${esc(n.text || '')} — ${esc(wl)}, and on being said it came to nothing.</p>${dossier}</div>`;
+  const me = M.ideasByLabel[a.idea] || {}, status = me.status || 'pending', st = IDEA_STATUS[status] || IDEA_STATUS.pending;
+  return `<div class="note"><span class="who">Something arrived</span><div class="chips"><span class="pill ${st.cls}">${st.label}</span>` +
+    `<span class="pill">${esc(KIND_LABEL[me.kind] || KIND_LABEL.ask)}</span>${a.again ? '<span class="pill brass">arrived again</span>' : ''}</div>` +
+    `<p class="stance">${esc(me.text || n.text || '')}</p><p class="t">${esc(wl)}${n.text ? `, out of: ${esc(n.text)}` : ''}</p>` +
+    (me.test ? `<p class="t"><b>How they would see it work.</b> ${esc(me.test)}</p>` : '') +
+    `<p class="t"><b>Why it might fail.</b> ${esc(me.might_fail ?? me.why_it_might_fail ?? '')}</p>` +
+    (me.answer ? `<p class="t"><b>Their answer.</b> ${esc(me.answer)}</p>` : '') +
+    (me.why ? `<p class="t"><b>${status === 'set aside' ? 'Why not now.' : 'Why they declined.'}</b> ${esc(me.why)}</p>` : '') + dossier + '</div>';
+}
+// The same, cast as a night card: an idea that came to them away from the desk, or woke with, or that sank back unsaid.
+function arrivalCard(a, M, key) {
+  const wl = WHERE_LABEL[a.where] || a.where, n = a.notion || {}, dossier = feedFold(n, key, 'sub');
+  if (!a.idea) return `<div class="idea"><p class="txt">${esc(n.text || '')}</p><p class="sub">${esc(wl)}. Said aloud, it came to nothing.</p>${dossier}</div>`;
+  const me = M.ideasByLabel[a.idea] || {}, status = me.status || 'pending', st = IDEA_STATUS[status] || IDEA_STATUS.pending;
+  return `<div class="idea"><div class="chips"><span class="pill ${st.cls}">${st.label}</span><span class="pill">${esc(KIND_LABEL[me.kind] || KIND_LABEL.ask)}</span>` +
+    `${a.again ? '<span class="pill brass">arrived again</span>' : ''}</div>` +
+    `<p class="txt">${esc(me.text || n.text || '')}</p><p class="sub">${esc(wl)}${n.text ? `, out of: ${esc(n.text)}` : ''}.</p>` +
+    (me.test ? `<p class="sub"><b>How they would see it work.</b> ${esc(me.test)}</p>` : '') +
+    `<p class="sub"><b>Why it might fail.</b> ${esc(me.might_fail ?? me.why_it_might_fail ?? '')}</p>` +
+    (me.answer ? `<p class="sub"><b>Their answer.</b> ${esc(me.answer)}</p>` : '') +
+    (me.why ? `<p class="sub"><b>${status === 'set aside' ? 'Why not now.' : 'Why they declined.'}</b> ${esc(me.why)}</p>` : '') + dossier + '</div>';
+}
+function sitting(s, M) {
   const chips = [`<span class="pill">${s.minutes} min</span>`, `<span class="pill ${s.verdict === 'accept' ? 'good' : s.verdict === 'reject' ? 'crit' : ''}">${esc(s.verdict)}</span>`];
   if (s.look) chips.push('<span class="pill bld">tried it themselves</span>');
   if (s.asked) chips.push('<span class="pill bld">asked where it was up to</span>');
   const off = s.asked ? (s.asked.assumptions || []).filter(x => !x.holds).length : 0;
   if (off) chips.push(`<span class="pill crit">${plural(off, 'assumption')} that did not hold</span>`);
+  if (s.readback) chips.push('<span class="pill bld">read-back</span>');
+  if (s.rb && (s.rb.questions || []).length) chips.push('<span class="pill bld">the builder asked first</span>');
+  if (s.rb && (s.rb.misread || []).length) chips.push(`<span class="pill crit">${plural(s.rb.misread.length, 'misread')}</span>`);
   if (s.challenged) chips.push('<span class="pill">challenged</span>');
   if (s.constrained) chips.push('<span class="pill">set a limit</span>');
   if ((s.new || []).length) chips.push(`<span class="pill">${plural(s.new.length, 'new requirement')}</span>`);
   if ((s.built || []).length) chips.push(`<span class="pill good">${s.built.length} judged built</span>`);
   if ((s.declined || []).length) chips.push(`<span class="pill brass">${plural(s.declined.length, 'night idea')} declined</span>`);
+  if ((s.answered || []).length) chips.push(`<span class="pill brass">${plural(s.answered.length, 'night idea')} answered</span>`);
+  if ((s.direction || []).length) chips.push('<span class="pill brass">gave direction</span>');
   if ((s.constraints_changed || []).length) chips.push(`<span class="pill crit">${plural(s.constraints_changed.length, 'limit')} changed</span>`);
   if (s.trust != null) chips.push(`<span class="pill">trust ${Number(s.trust).toFixed(2)}</span>`);
+  if (s.borrowed != null) chips.push(`<span class="pill">${Math.round(s.borrowed * 100)}% the builder's words</span>`);
   if (s.done) chips.push('<span class="pill good">says it is done</span>');
+  if (s.push) chips.push('<span class="pill brass">pushed for more</span>');
+  if (s.altitude) chips.push(`<span class="pill">${esc(ALTITUDE_LABEL[s.altitude] || s.altitude)}</span>`);
+  if (s.arrival) chips.push(`<span class="pill brass">${s.arrival.idea ? 'something arrived' : 'something stirred, came to nothing'}</span>`);
   let own = '';
   if (s.look || s.ownTools.length) own = `<div class="note">${s.look ? `They ran it themselves: ${esc((s.look.ran || []).join(' · '))}. ${s.look.matched ? 'What they saw matched what they had been told.' : '<b>What they saw did not match what they had been told.</b>'}` : ''}${s.ownTools.length ? fold(plural(s.ownTools.length, 'thing') + ' they did', toolLines(s.ownTools), `own${s.n}`) : ''}</div>`;
-  const talk = s.asked ? `<div class="note">${(s.asked.rounds || []).map((r, i) => `<span class="who">They asked</span><p>${esc(r.q)}</p><span class="who b">The builder said</span>${more(r.a, `ask${s.n}-${i}`, 280)}`).join('')}` +
+  const talk = s.asked ? `<div class="note">${(s.asked.rounds || []).map((r, i) => { const t = (s.asked.takens || [])[i];
+      return `<span class="who">They asked</span><p>${esc(r.q)}</p><span class="who b">The builder said</span>` +
+        (t ? takenNote(t) + fold(`the builder's own words${t.minutes ? ` · ${Math.round(t.minutes)} min to read` : ''}`, more(r.a, `ask${s.n}-${i}`, 280), `askraw${s.n}-${i}`)
+           : more(r.a, `ask${s.n}-${i}`, 280)); }).join('')}` +
     ((s.asked.assumptions || []).length ? `<span class="who">What the builder took for granted</span>${s.asked.assumptions.map(x => `<p>${x.holds ? '' : '<b>Does not hold:</b> '}${esc(x.assumption)}. <span class="t">${esc(x.why)}</span></p>`).join('')}` : '') +
     (s.asked.tools.length ? fold(plural(s.asked.tools.length, 'thing') + ' the builder looked at to answer', toolLines(s.asked.tools), `asktools${s.n}`) : '') + '</div>' : '';
+  const named = (s.named || []).length ? `<div class="note">${s.named.map(n => `<div class="req"><span class="id">${esc(n.id || '')}</span><div><p>${esc(n.name)}</p>${n.want ? `<p class="t">${esc(n.want)}</p>` : ''}</div></div>`).join('')}</div>` : '';
+  const answered = (s.answered || []).length ? `<div class="note"><span class="who">They answered</span>${s.answered.map(a => `<p><b>${esc(a.idea)}</b> — ${esc(a.answer)}</p>`).join('')}</div>` : '';
+  const direction = (s.direction || []).length ? `<div class="note"><span class="who">Where they want this to go</span>${s.direction.map(t => `<p>${esc(t)}</p>`).join('')}</div>` : '';
+  const arrival = s.arrival ? arrivalNote(s.arrival, M, `arr${s.n}`) : '';
+  const rbHtml = s.rb ? `<div>${readbackNote(s)}</div>` : '';
   const waiting = s.reply == null;
+  const rt = s.replyTaken;
   const builder = `<div><span class="who b">The builder${s.secs ? ` · ${(s.secs / 60).toFixed(1)} min` : ''}${s.cost ? ` · ${usd(s.cost)}` : ''}</span>` +
-    (waiting ? `<p class="none">Still working. ${plural(s.tools.length, 'tool use')} so far.</p>` : more(s.reply, `rep${s.n}`, 360)) +
+    (waiting ? `<p class="none">Still working. ${plural(s.tools.length, 'tool use')} so far.</p>` :
+      rt ? takenNote(rt) + fold(`the builder's own words${rt.minutes ? ` · ${Math.round(rt.minutes)} min to read` : ''}`, more(s.reply, `rep${s.n}`, 360), `repfold${s.n}`)
+         : more(s.reply, `rep${s.n}`, 360)) +
     (s.tools.length ? fold(plural(s.tools.length, 'tool use'), toolLines(s.tools), `tools${s.n}`) : '') +
     (s.check ? `<div class="chips"><span class="pill ${s.check.ok ? 'good' : 'crit'}">check ${s.check.ok ? 'passed' : 'FAILED'}</span></div>${fold('What the check printed', `<pre class="out">${esc(s.check.tail)}</pre>`, `chk${s.n}`)}` : '') + '</div>';
   return `<article class="sit"><div><div class="sithead"><b>Sitting ${s.n}</b><div class="chips">${chips.join('')}</div></div>` +
     s.notes.map(n => `<p class="note">${esc(n)}</p>`).join('') +
-    `<p class="stance">${esc(s.stance_line)}</p>${own}${talk}<span class="who">They wrote</span>${more(s.message, `msg${s.n}`)}</div>${builder}</article>`;
+    `<p class="stance">${esc(s.stance_line)}</p>${own}${talk}<span class="who">They wrote</span>${more(s.message, `msg${s.n}`)}${named}${answered}${direction}${arrival}</div>${rbHtml}${builder}</article>`;
 }
 
-function spoon(sp, k, ideas) {
+function anchorLabel(a) {
+  if (a === 'why') return 'their why';
+  if (a === 'could') return 'what it could become';
+  if (a === 'follows') return 'what follows';
+  if (/^nf-\d+$/.test(a)) return 'something they did not follow';
+  return a;
+}
+function spoon(sp, k, ideas, M) {
   if (!sp.candidates) return `<p class="quiet">The spoon fell and nothing was caught.</p>`;
   const m = sp.motifs || {}, links = sp.links || [], el = sp.elements || {};
   const list = (h, a) => (a || []).length ? `<div><h3>${h}</h3><ul>${a.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : '';
-  const linkRow = (ln, i) => `<div class="link"><span class="meta">#${i} · ${esc(ln.kind)} · ${(ln.anchors || []).map(a => `<span title="${esc(el[a] || '')}">${esc(a)}</span>`).join(' ')} → ${esc(ln.other)}</span><span>${esc(ln.text)}</span>${ln.mechanism ? `<span class="mech">Mechanism: ${esc(ln.mechanism)}</span>` : ''}</div>`;
-  const cards = sp.candidates.map((c, j) => { const me = ideas[c.text] || {}, st = me.status || 'pending';
+  const linkRow = (ln, i) => `<div class="link"><span class="meta">#${i} · ${esc(ln.kind)} · ${(ln.anchors || []).map(a => `<span title="${esc(el[a] || '')}">${esc(anchorLabel(a))}</span>`).join(' ')} → ${esc(ln.other)}</span><span>${esc(ln.text)}</span>${ln.mechanism ? `<span class="mech">Mechanism: ${esc(ln.mechanism)}</span>` : ''}</div>`;
+  const cards = sp.candidates.map((c, j) => { const me = ideas[c.text] || {}, status = me.status || 'pending', st = IDEA_STATUS[status] || IDEA_STATUS.pending;
     const src = (c.from_indexes || []).filter(i => links[i]);
-    return `<div class="idea"><div class="chips"><span class="pill ${st === 'taken' ? 'good' : st === 'declined' ? 'crit' : 'brass'}">${st === 'pending' ? 'waiting for them' : st === 'set aside' ? 'they set it aside, not now' : 'they ' + (st === 'taken' ? 'took it' : 'declined it')}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}</div>` +
-      `<p class="txt">${esc(c.text)}</p><p class="sub"><b>How they would see it work.</b> ${esc(c.test)}</p><p class="sub"><b>Why it might fail.</b> ${esc(c.why_it_might_fail)}</p>` +
-      (me.why ? `<p class="sub"><b>${st === 'set aside' ? 'Why not now.' : 'Why they declined.'}</b> ${esc(me.why)}</p>` : '') +
-      (src.length ? fold(`Where it came from: ${plural(src.length, 'link')}`, src.map(i => linkRow(links[i], i)).join(''), `src${k}-${j}`) : '') + '</div>'; }).join('');
+    const arr = M.arrivalByLabel.get(c.label), dossier = arr ? feedFold(arr.notion, `dossier${k}-${j}`, 'sub') : '';
+    return `<div class="idea"><div class="chips"><span class="pill ${st.cls}">${st.label}</span><span class="pill">${esc(KIND_LABEL[c.kind] || KIND_LABEL.ask)}</span>${me.label ? `<span class="pill">${esc(me.label)}</span>` : ''}${arr && arr.again ? '<span class="pill brass">arrived again</span>' : ''}</div>` +
+      `<p class="txt">${esc(c.text)}</p>${c.test ? `<p class="sub"><b>How they would see it work.</b> ${esc(c.test)}</p>` : ''}<p class="sub"><b>Why it might fail.</b> ${esc(c.might_fail ?? c.why_it_might_fail ?? '')}</p>` +
+      (me.answer ? `<p class="sub"><b>Their answer.</b> ${esc(me.answer)}</p>` : '') +
+      (me.why ? `<p class="sub"><b>${status === 'set aside' ? 'Why not now.' : 'Why they declined.'}</b> ${esc(me.why)}</p>` : '') +
+      (src.length ? fold(`Where it came from: ${plural(src.length, 'link')}`, src.map(i => linkRow(links[i], i)).join(''), `src${k}-${j}`) : '') + dossier + '</div>'; }).join('');
   return `<div class="motifs">${list('Motifs', m.motifs)}${list('Tensions', m.tensions)}${list('Questions', m.questions)}</div>${cards}` +
     fold(`All ${plural(links.length, 'link')} caught that night`, links.map(linkRow).join(''), `links${k}`);
 }
 
-function night(d, ideas) {
+function night(d, ideas, M) {
   const n = d.night; if (!n.any) return '';
   const chips = [];
   if (d.wrote) chips.push('<span class="pill">the day was written</span>');
@@ -331,27 +484,127 @@ function night(d, ideas) {
   if (n.step) chips.push('<span class="pill good">they stepped back</span>');
   n.failed.forEach(f => chips.push(`<span class="pill crit" title="${esc(f.error)}">${esc(f.what)} failed</span>`));
   const written = n.drifts.reduce((a, x) => a + x.written, 0), caught = n.drifts.reduce((a, x) => a + x.caught, 0), kept = n.spoons.reduce((a, x) => a + (x.kept || 0), 0);
-  const stages = n.spoons.length || n.drifts.length ? `<div class="stages">${n.drifts.map(x => `<div class="stage"><b>${x.caught}/${x.written}</b><span>drift on ${esc(x.model)}, asked for about ${x.asked}</span></div>`).join('')}<div class="stage"><b>${caught}</b><span>links held of ${written} written</span></div><div class="stage"><b>${kept}</b><span>kept by Sift for the morning</span></div></div>` : '';
-  const step = n.step ? `<div><h3>Stepping back</h3></div><ul>${(n.step.observations || []).map(o => `<li>${esc(o)}</li>`).join('')}</ul>` +
+  const stages = n.spoons.length || n.drifts.length ? `<div class="stages">${n.drifts.map(x => `<div class="stage"><b>${x.caught}/${x.written}</b><span>drift on ${esc(x.model)}, asked for about ${x.asked}</span></div>`).join('')}<div class="stage"><b>${caught}</b><span>links held of ${written} written</span></div><div class="stage"><b>${kept}</b><span>arrived by morning</span></div></div>` : '';
+  const quiet = (n.quiet || []).map(q => `<p class="quiet">${esc(q)}</p>`).join('');
+  // Away arrivals, and any that came to nothing on being said, do not belong to any one spoon — the desk was empty that night.
+  const extra = (n.arrivals || []).filter(a => a.where !== 'woke' || !a.idea);
+  const extraHtml = extra.length ? `<div><h3>Arrivals away from the spoon</h3></div>${extra.map((a, i) => arrivalCard(a, M, `xarr${d.n}-${i}`)).join('')}` : '';
+  const whyBit = n.step && n.step.why_now ? `<p class="stance">${esc(n.step.why_now)}</p>` +
+    (n.step.could_become ? `<p class="t"><b>Where it could go.</b> ${esc(n.step.could_become)}</p>` : '') +
+    (n.step.follows ? `<p class="t"><b>What follows.</b> ${esc(n.step.follows)}</p>` : '') : '';
+  const waysBit = n.step && (n.step.ways || []).length ? `<span class="who">Their ways, from here</span><ul>${n.step.ways.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '';
+  const step = n.step ? `<div><h3>Stepping back</h3></div>${whyBit}<ul>${(n.step.observations || []).map(o => `<li>${esc(o)}</li>`).join('')}</ul>${waysBit}` +
     ((n.step.notes || []).length ? fold('Their notes for you', `<ul>${n.step.notes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>`, `stepn${d.n}`) : '') : '';
-  return `<div class="night"><div class="sithead"><h3>Night after day ${d.n}</h3><div class="chips">${chips.join('')}</div><span class="pill">${usd(n.cost)}</span></div>${stages}${n.spoons.map((sp, i) => spoon(sp, `${d.n}-${i}`, ideas)).join('')}${step}</div>`;
+  return `<div class="night"><div class="sithead"><h3>Night after day ${d.n}</h3><div class="chips">${chips.join('')}</div><span class="pill">${usd(n.cost)}</span></div>${quiet}${stages}${n.spoons.map((sp, i) => spoon(sp, `${d.n}-${i}`, ideas, M)).join('')}${extraHtml}${step}</div>`;
 }
 
-function dayBlock(d, ideas) {
+function dayBlock(d, ideas, M) {
   const mood = d.mood == null ? '' : `<span>mood ${sgn(d.mood)}</span>`;
-  const body = (d.text ? more(d.text, `diary${d.n}`, 420, 'pre diary') : '') +
-    (d.sittings.length ? d.sittings.map(sitting).join('') : '<p class="idle">No time for the project today.</p>') + night(d, ideas);
-  return `<div class="day"><div class="dayno"><b>Day ${d.n}</b>${mood}<span>${d.sittings.length ? plural(d.sittings.length, 'sitting') : 'no sitting'}</span></div><div class="daybody">${body}</div></div>`;
+  const when = d.when ? `<span>${esc(d.when)}</span>` : '';
+  const journal = ((d.threads || []).length || d.opened || d.pursuit) ? `<div class="note">` +
+    ((d.threads || []).length ? `<ul>${d.threads.map(t => `<li>${esc(t.text)}${t.move === 'ends' ? ' <span class="pill">ended</span>' : ''} — ${esc(MOVE_LABEL[t.move] || t.move)}${t.state ? `. Now: ${esc(t.state)}` : ''}</li>`).join('')}</ul>` : '') +
+    (d.opened ? `<p>A new thread: ${esc(d.opened)}</p>` : '') +
+    (d.pursuit ? `<p>They followed: ${esc(d.pursuit)}</p>` : '') + `</div>` : '';
+  const body = (d.text ? more(d.text, `diary${d.n}`, 420, 'pre diary') : '') + journal +
+    (d.sittings.length ? d.sittings.map(s => sitting(s, M)).join('') : '<p class="idle">No time for the project today.</p>') + night(d, ideas, M);
+  return `<div class="day"><div class="dayno"><b>Day ${d.n}</b>${when}${mood}<span>${d.sittings.length ? plural(d.sittings.length, 'sitting') : 'no sitting'}</span></div><div class="daybody">${body}</div></div>`;
 }
 
+function whySection(D) {
+  const stakes = D.events.filter(e => e.kind === 'stake').map(e => e.d);
+  if (!stakes.length) return '';
+  const cur = stakes[stakes.length - 1];
+  let prev = {};
+  const rows = stakes.map(x => {
+    const when = x.day ? `day ${x.day}` : 'before it started';
+    const extra = [];
+    if (x.could_become && x.could_become !== prev.could_become) extra.push(`where it could go: ${esc(x.could_become)}`);
+    if (x.follows && x.follows !== prev.follows) extra.push(`what follows: ${esc(x.follows)}`);
+    const line = `<li>${esc(when)}: ${x.text === prev.text ? 'it held.' : esc(x.text)}` +
+      (extra.length ? `<br><span class="t">${extra.join(' · ')}</span>` : '') + '</li>';
+    prev = x;
+    return line;
+  }).join('');
+  return `<section><h3>Why they want it</h3><p class="stance">${esc(cur.text)}</p>` +
+    (cur.could_become ? `<p class="t"><b>Where it could go.</b> ${esc(cur.could_become)}</p>` : '') +
+    (cur.follows ? `<p class="t"><b>What follows.</b> ${esc(cur.follows)}</p>` : '') +
+    (stakes.length > 1 ? fold(`${plural(stakes.length, 'version')} over the run, oldest first`, `<ul>${rows}</ul>`, 'why-history') : '') +
+    '</section>';
+}
+// Compact rows for what is stirring under notice: a bar of activation scaled to the strongest in view, with a tick
+// at the threshold — an arrival can carry a notion two or three times past theta, so scaling to theta alone would
+// only ever show a row of full bars.
+function stirringRow(n, th, scale, arrivedIds) {
+  const pct = Math.round(Math.max(2, Math.min(100, n.a / scale * 100)));
+  const tpct = Math.round(Math.max(0, Math.min(100, th / scale * 100)));
+  return `<div class="notion"><p>${esc(n.text)}${arrivedIds.has(n.id) ? ' <span class="pill brass">arrived</span>' : ''}</p>` +
+    `<div class="bar" title="${n.a} against a threshold of ${th}"><i style="width:${pct}%"></i><b style="left:${tpct}%"></b></div>` +
+    `<div class="chips">${(n.streams || []).map(s => `<span class="pill">${esc(s)}</span>`).join('')}</div></div>`;
+}
+// The five notions that have gathered the most, over every field reading, with theta as a faint reference line and arrivals ringed.
+function stirringChart(M) {
+  const fields = M.fields;
+  if (!fields.length) return '';
+  const peak = new Map(), text = new Map();
+  fields.forEach(fe => (fe.top || []).forEach(n => { peak.set(n.id, Math.max(peak.get(n.id) || 0, n.a)); text.set(n.id, n.text); }));
+  const ids = [...peak.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(x => x[0]);
+  if (!ids.length) return '';
+  const x = xAt(fields.length), top = Math.max(1, ...peak.values(), ...fields.map(fe => fe.theta || 0)), y = yAt(0, top);
+  const colors = ['var(--builder)', 'var(--brass)', 'var(--good)', 'var(--crit)', 'var(--ink)'];
+  const series = ids.map(id => ({id, pts: fields.map((fe, i) => [i, (fe.top || []).find(t => t.id === id)]).filter(([, n]) => n).map(([i, n]) => [i, n.a])}));
+  const thetaLine = fields.map((fe, i) => `${x(i)},${y(fe.theta || 0)}`).join(' ');
+  const lines = series.map((s, i) => s.pts.length > 1
+    ? `<polyline fill="none" stroke="${colors[i % colors.length]}" stroke-width="1.4" points="${s.pts.map(([xi, yi]) => `${x(xi)},${y(yi)}`).join(' ')}"><title>${esc(text.get(s.id) || '')}</title></polyline>`
+    : s.pts.map(([xi, yi]) => `<circle cx="${x(xi)}" cy="${y(yi)}" r="2.5" fill="${colors[i % colors.length]}"><title>${esc(text.get(s.id) || '')}</title></circle>`).join(''));
+  const dots = (M.arrivalDots || []).filter(a => ids.includes(a.notionId) && a.fieldIdx >= 0).map(a => {
+    const s = series.find(s2 => s2.id === a.notionId), before = s ? s.pts.filter(([xi]) => xi <= a.fieldIdx) : [];
+    const py = before.length ? before[before.length - 1][1] : 0, ci = ids.indexOf(a.notionId);
+    return `<circle cx="${x(a.fieldIdx)}" cy="${y(py)}" r="3.5" fill="none" stroke="${colors[ci % colors.length]}" stroke-width="1.6"><title>${esc(text.get(a.notionId) || '')}${a.idea ? ' arrived' : ', said, came to nothing'}</title></circle>`;
+  }).join('');
+  return chart('What is stirring, over time', 'The five notions that have gathered most, and the threshold at the time (faint dashed line). A ring is when one arrived.',
+    frame([[top, Math.round(top)], [Math.round(top / 2), Math.round(top / 2)], [0, '0']], y, fields.map(fe => 'd' + fe.day), x) +
+    `<polyline fill="none" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3,3" points="${thetaLine}"/>` + lines.join('') + dots);
+}
+function stirringSection(D, M) {
+  if (!M.fields.length) return '';
+  const S = D.state || {}, latest = M.fields[M.fields.length - 1], th = latest.theta || 0;
+  const arrivedIds = new Set((S.ideas || []).map(i => i.notion).filter(Boolean));
+  const scale = Math.max(th, ...(latest.top || []).map(n => n.a), 0.001);
+  const rows = (latest.top || []).map(n => stirringRow(n, th, scale, arrivedIds)).join('');
+  return `<section><h3>What is stirring</h3>${rows || '<p class="none">Nothing yet.</p>'}${stirringChart(M)}</section>`;
+}
+// How they understand the thing, in their own terms — rewritten at night, with what they know they do not understand.
+function pictureSection(M) {
+  if (!M.pictures.length) return '';
+  const cur = M.pictures[M.pictures.length - 1];
+  const gaps = (cur.gaps || []).length ? `<ul>${cur.gaps.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : '<p class="none">None named.</p>';
+  const hist = M.pictures.length > 1 ? fold(`${plural(M.pictures.length, 'version')} over the run, oldest first`,
+    M.pictures.map(p => `<p>${p.day != null ? `<b>Day ${esc(p.day)}.</b> ` : ''}${esc(p.picture)}</p>`).join(''), 'picture-history') : '';
+  return `<section><h3>How they understand it</h3><p class="stance">${esc(cur.picture)}</p><p class="t">What they know they do not understand:</p>${gaps}${hist}</section>`;
+}
 function rail(D, M) {
-  const S = D.state, reqs = S.reqs || [], sec = (h, inner) => `<section><h3>${h}</h3>${inner}</section>`;
+  const S = D.state, reqs = S.reqs || [], ideas = S.ideas || [], sec = (h, inner) => `<section><h3>${h}</h3>${inner}</section>`;
   const ul = a => (a || []).length ? `<ul>${a.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="none">Nothing yet.</p>';
+  const threads = [...M.threads.values()].sort((a, b) => b.day - a.day);
   return sec(`Requirements · ${reqs.filter(q => q.status === 'built').length} built of ${reqs.length}`, reqs.length ? reqs.map(q =>
-      `<div class="req"><span class="id">${esc(q.id)}</span><div><div class="chips"><span class="pill ${q.status === 'built' ? 'good' : ''}">${esc(q.status)}</span>${q.from_dream ? '<span class="pill brass">from a night</span>' : ''}<span class="pill">sitting ${q.turn}</span></div><p>${esc(q.text)}</p><p class="t">${esc(q.test || '')}</p></div></div>`).join('') : '<p class="none">None yet.</p>') +
+      `<div class="req"><span class="id">${esc(q.id)}</span><div><div class="chips"><span class="pill ${q.status === 'built' ? 'good' : ''}">${esc(q.status)}</span>${q.from_dream ? '<span class="pill brass">from a night</span>' : ''}<span class="pill">sitting ${q.turn}</span></div><p>${q.name ? `<b>${esc(q.name)}</b> — ` : ''}${esc(q.text)}</p><p class="t">${esc(q.test || '')}</p></div></div>`).join('') : '<p class="none">None yet.</p>') +
+    whySection(D) +
+    stirringSection(D, M) +
+    pictureSection(M) +
     sec('Questions for you', (S.escalations || []).length ? ul(S.escalations.map(e => `Sitting ${e.turn}: ${e.question}`)) : '<p class="none">None. They have not needed you.</p>') +
     sec('Limits they changed', (S.amended || []).length ? ul(S.amended.map(x => `Sitting ${x.turn}: was "${x.constraint}", now "${x.now}". ${x.why}`)) : '<p class="none">None.</p>') +
-    sec('Their ways of working', ul(S.ways)) + sec('Their notes for you', ul(S.human_notes)) +
+    sec('Their ways of working', ul(S.ways)) +
+    sec(`What the nights have brought · ${ideas.length}`, ideas.length ? ideas.map(i => { const status = i.status || 'pending', st = IDEA_STATUS[status] || IDEA_STATUS.pending;
+        return `<div class="req"><span class="id">${esc(i.label || '')}</span><div><div class="chips"><span class="pill">${esc(KIND_LABEL[i.kind] || KIND_LABEL.ask)}</span><span class="pill ${st.cls}">${st.label}</span>${i.where ? `<span class="pill">${esc(WHERE_LABEL[i.where] || i.where)}</span>` : ''}</div><p>${esc(i.text)}</p>` +
+          (i.answer ? `<p class="t"><b>Their answer.</b> ${esc(i.answer)}</p>` : '') + (i.why ? `<p class="t">${esc(i.why)}</p>` : '') + '</div></div>'; }).join('') : '<p class="none">Nothing yet.</p>') +
+    sec('Words they have made theirs', M.words.length ?
+      `<ul>${M.words.map(w => `<li>${esc(w)}${M.wordDay[w] != null ? ` <span class="t">— day ${esc(M.wordDay[w])}</span>` : ''}</li>`).join('')}</ul>` +
+      (M.breath != null ? `<p class="none">Breath for about ${plural(M.breath, 'word')}, last sitting.</p>` : '')
+      : '<p class="none">None yet. It still all comes through the builder\'s own words.</p>') +
+    sec(`Threads in their life · ${threads.length}`, threads.length ?
+      `<ul>${threads.map(t => `<li>${esc(t.text)}${t.move === 'ends' ? ' <span class="pill">ended</span>' : ''} — ${esc(MOVE_LABEL[t.move] || t.move)}.${t.state ? ` Now: ${esc(t.state)}` : ''} <span class="t">day ${esc(t.day)}</span></li>`).join('')}</ul>`
+      : '<p class="none">None yet.</p>') +
+    sec('Their notes for you', ul(S.human_notes)) +
     sec('What they remember of the project', D.memory ? more(D.memory, 'memory', 380) : '<p class="none">Nothing has been forgotten into memory yet.</p>');
 }
 
@@ -369,15 +622,19 @@ function render() {
   document.getElementById('title').textContent = project ? `${owner} on ${project}` : 'Waiting for the first day';
   const built = (S.reqs || []).filter(q => q.status === 'built').length, taken = (S.ideas || []).filter(i => i.status === 'taken').length;
   document.getElementById('lede').textContent = M.days.length ? `${plural(M.days.length, 'day')} of their life so far${meta.days ? ` of ${Math.max(meta.days, S.days || 0)} planned` : ''}, at about ${meta.turns_per_day ?? '?'} sittings a day. They have sat down ${plural(sits.length, 'time')}. The spoon has fallen on ${plural(M.days.filter(d => d.night.spoons.length).length, 'night')} and left them ${plural((S.ideas || []).length, 'idea')}, of which they took ${taken}.` : 'The run has started. Nothing has been lived yet.';
+  const ah = document.getElementById('askhuman'), pendingQ = M.forHuman.filter(q => !q.answered);
+  ah.hidden = !pendingQ.length;
+  if (pendingQ.length) ah.innerHTML = `<span class="what">${plural(pendingQ.length, 'reserved decision')} waiting on you</span>` +
+    pendingQ.map(q => `<p class="stance">${esc(q.question)}</p><p class="t">Reserved to you — day ${esc(q.day)}, sitting ${esc(q.turn)}. Answer with <span style="font-family:var(--mono)">regent say ${esc(D.run)} "..."</span>.</p>`).join('');
   const lastCheck = [...sits].reverse().find(s => s.check);
   document.getElementById('facts').innerHTML = [[M.days.length, 'days lived'], [sits.length, 'sittings'], [`${built}/${(S.reqs || []).length}`, 'requirements built'],
     [`${M.kept}/${M.caught}`, 'links kept of caught'], [`${taken}/${(S.ideas || []).length}`, 'night ideas taken'], [S.trust != null ? Number(S.trust).toFixed(2) : '—', 'trust in the builder'],
     [lastCheck ? (lastCheck.check.ok ? 'passing' : 'FAILING') : '—', 'the check'], [usd(M.total), 'spent']].map(([b, s]) => `<div class="fact"><b>${esc(b)}</b><span>${s}</span></div>`).join('');
   const now = document.getElementById('now'); now.hidden = !LIVE || !!S.finished;
-  if (!now.hidden) now.innerHTML = `<span class="what">${esc(nowLine(D, M))}</span><div class="tail">${M.tools.slice(-8).reverse().map(t => `<span><em>${esc(t.who === 'claude' ? 'builder' : t.who)} · ${esc(t.name)}</em> ${esc(t.what)}</span>`).join('')}</div>`;
+  if (!now.hidden) now.innerHTML = `<span class="what">${esc(nowLine(D, M))}</span><div class="tail">${M.tools.slice(-8).reverse().map(t => `<span><em>${esc(t.who === 'claude' ? 'builder' : t.who === 'readback' ? 'read-back' : t.who)} · ${esc(t.name)}</em> ${esc(t.what)}</span>`).join('')}</div>`;
   document.getElementById('charts').innerHTML = charts(D, M);
   const ideas = Object.fromEntries((S.ideas || []).map(i => [i.text, i])), order = newest ? [...M.days].reverse() : M.days;
-  document.getElementById('book').innerHTML = order.map(d => dayBlock(d, ideas)).join('') || '<p class="none">No day has begun.</p>';
+  document.getElementById('book').innerHTML = order.map(d => dayBlock(d, ideas, M)).join('') || '<p class="none">No day has begun.</p>';
   document.getElementById('rail').innerHTML = rail(D, M);
   document.getElementById('order').textContent = newest ? 'Newest first' : 'Oldest first';
   document.getElementById('foot').textContent = `${D.run} · seed ${meta.seed ?? '?'} · ${D.events.length} ledger rows${M.resumes ? ` · resumed ${M.resumes}×` : ''}${M.errors.length ? ` · ${M.errors.length} call errors` : ''}`;
