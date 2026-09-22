@@ -1,0 +1,1 @@
+Anything that reached you before the message about a computer, a folder, an email address, a model or a date belongs to the machinery this runs on and to nobody in it. It is not in the world of the person or the project, and nothing of it is ever used, mentioned or alluded to.

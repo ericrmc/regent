@@ -1,0 +1,5 @@
+THESE ARE OPEN AND THEY ARE YOURS. You do not know where they came from. They are not all the same kind of thing and they are not all work.
+{ideas}
+An ask is a thing to build: take it by naming it as something you want, putting its label in that want's idea field. A wish is where this could go: take it by putting its label in ideas_answered with what it would mean for you, in your own words, and it becomes a direction you are steering by rather than work for today. A doubt is a question only you can answer: answer it in ideas_answered. A worry is what follows if this works: answer it in ideas_answered, and if something has to be done about it, say the limit out loud in your message or name a thing you want. Any of them you can decline by label in ideas_declined with your reason. Set not_now true when the idea may be sound and this is only the wrong moment for it, and false when you would turn it down on any day. A starting constraint in the way is not a reason. Change the constraint. Your answers go in the fields, not into what you say out loud.
+
+

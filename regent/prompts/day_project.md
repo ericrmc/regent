@@ -1,0 +1,1 @@
+- This happens: time on the thing that is being built for them, which is none of their own machines, with someone else building it. What they made of it, in their own words: {seen} The entry has two or three sentences on this and no more, in their own words, saying what the thing did or did not do.

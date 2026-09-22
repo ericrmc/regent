@@ -16,10 +16,10 @@ dairy farmer, a lock keeper, a school bursar. That distance is the point. An
 owner who thinks like the builder asks for what the builder would have built
 anyway.
 
-Regent is experimental. It is one Python file and one HTML page, with no
-dependencies beyond the `claude` CLI. At the start of every run it prints what
-it read from the charter, and every line it could not read, because the run is
-days long and you will not be there.
+Regent is experimental. It is one small Python package and one HTML page, with
+every prompt a file of its own, and no dependencies beyond the `claude` CLI. At
+the start of every run it prints what it read from the charter, and every line
+it could not read, because the run is days long and you will not be there.
 
 ## Why a person, and not a prompt
 
@@ -421,10 +421,25 @@ When a run ends, `digest.md` in the run directory is the page to read first.
 
 ```
 regent/
-  regent.py                  the harness, one file
-  watch.html                 the live page
+  regent/
+    cli.py                   the commands, and the run loop everything hangs off
+    charter.py               the headings it reads, and what it says it cannot read
+    life.py                  the owner as a folder: his days, threads and taste
+    ledger.py                the run's events, its resumable state, and the Context
+    dice.py                  the draws: how a day goes, which thread comes due
+    field.py                 the arithmetic of what is stirring under his notice
+    crossing.py              the wall between his words and the builder's, and the gauge on it
+    owner.py                 the sitting: what he is shown, what he says, what he takes
+    night.py                 the day written, the forgetting, the spoon, the hour away
+    digest.py                digest.md, the page to read first when you come back
+    watch.py                 the live page, served or exported
+    schemas.py               the shape of every structured answer
+    prompts/*.md             every prompt, one file each, text as it goes down the wire
+    agents/                  how a model is called: the interface, and the claude CLI
+    watch.html               the live page
   examples/                  worked charters
   owners/<name>/             a sample owner: bible.md, disposition.json, events.md, pursuits.md
+  tests/                     the pure functions, and one whole run against a stand-in CLI
 
 ~/.regent/                   or $REGENT_HOME
   owners/<name>/             owners you cast, each with life.db
@@ -459,8 +474,9 @@ prompts, a 592-line config holding 224 tunables, 17 model roles each with its
 own prompt and schema, three storage layers, and a hand-rolled wire protocol
 propped up by a plugin skill. It worked. Nobody could tune it.
 
-It is now one file and one page, because almost everything else it did is
-something Claude Code already does: sessions, subagents, permissions, the
-sandbox, structured output. The harness's job is the owner, and the owner is a
-life, a way of perceiving, a memory and the nights. Think of that before adding
-a module.
+It is now one package and one page, with the prompts as files so they can be
+read and diffed on their own, and nothing installed but Python. Almost
+everything else it did is something Claude Code already does: sessions,
+subagents, permissions, the sandbox, structured output. The harness's job is the
+owner, and the owner is a life, a way of perceiving, a memory and the nights.
+Think of that before adding a module.

@@ -6,14 +6,18 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-regent = "regent:main"
+regent = "regent.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["regent"]
+packages = ["regent", "regent.agents", "regent.prompts"]
+
+[tool.setuptools.package-data]
+regent = ["watch.html"]
+"regent.prompts" = ["*.md"]
 
 [tool.ruff]
 line-length = 130

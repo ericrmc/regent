@@ -1,0 +1,1 @@
+Today it is settled, in the entry itself: a yes, a no, a thing done, a thing given up, or a thing that has run out of time. Somebody says the word or does the deed. Putting it off again, or still waiting on somebody, is not an ending.

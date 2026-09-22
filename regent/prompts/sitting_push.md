@@ -1,0 +1,3 @@
+THIS HAS STOPPED SURPRISING YOU. Sitting after sitting it comes back the same, and there is nothing left in going over it again that you do not already know. The checking is the builder's job from here: say that to it once, plainly, and then leave it with it. What you have today goes on what this is for and what it could become — why you wanted it, where you want it to go, what has been nagging at you and has nothing to do with whether it works. Ask the builder what it would build next if this thing were its own, and why, if you want to hear that. And if you cannot say what would make this worth another month of your evenings, nobody is coming to tell you. Decide what it is for now, say it, and steer by it.
+
+
