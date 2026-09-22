@@ -322,6 +322,12 @@ may ask the builder what it would build next if the thing were its own.
 Separately, trust sets the altitude: a trusted builder keeps the proof and the
 owner's attention is sent higher; an untrusted one is asked for proof.
 
+Trust is earned and lost on what the owner sees every sitting: the check
+passing or failing, a thing they saw working, a thing the builder said back
+wrong, a thing they asked for that has not come after a few sittings, and,
+weightiest of all, whether the thing matched what they were told the few times
+they tried it themselves.
+
 ### You are away
 
 That is why the project is theirs. You are there for the charter's **Reserved**

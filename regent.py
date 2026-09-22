@@ -1687,7 +1687,7 @@ def run_cmd(a):
         if look:
             S["since_look"] = 0
             S["counts"]["looks"] += 1
-            S["trust"] = clip(S["trust"] + (0.08 if d["look_matched"] else -0.25), 0, 1)
+            S["trust"] = clip(S["trust"] + (0.08 if d["look_matched"] else -0.2), 0, 1)
             run.log("look", ran=d["looked_at"], matched=d["look_matched"], trust=round(S["trust"], 2))
         S["wants_look"] = bool(d["wants_to_look"])
         named = []
@@ -1813,6 +1813,12 @@ def run_cmd(a):
             run.log("check", ok=S["check_ok"], tail=S["last_check"][-600:])
             run.say(f"   check {'passed' if S['check_ok'] else 'FAILED'}: "
                     f"{S['last_check'].splitlines()[-1] if S['last_check'] else ''}")
+        # Trust moves on what he sees every sitting, not only the few times he tries the thing himself: the check,
+        # a thing he saw working, a thing the builder took wrong, and a thing he asked for that has not come.
+        stale = sum(1 for q in S["reqs"] if q["status"] == "open" and turn - q["turn"] > 3)
+        wrong = sum(1 for x in S["assumptions"] if x.get("turn") == turn and not x["holds"])
+        S["trust"] = clip(S["trust"] + (0.01 if S["check_ok"] else -0.05 if check_cmd else 0)
+                          + 0.02 * min(3, len(built_now)) - 0.05 * wrong - 0.03 * min(2, stale), 0, 1)
         was_show = S["last_show"]
         if show_cmd:
             S["last_show"], _ = shell(show_cmd, project, a.timeout, 60)
