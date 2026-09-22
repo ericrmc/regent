@@ -27,9 +27,10 @@ from regent.agents import Adapter
 from regent.agents.claude import Claude
 from regent.agents.cursor import schema_in_words
 from regent.charter import charter_faults, sections
-from regent.crossing import crossed, gauge, places_named, unmark, words
-from regent.dice import clip, due, how_it_goes, in_words, poisson, thread_due, thread_move
+from regent.crossing import crossed, echoes, gauge, places_named, unmark, words
+from regent.dice import REGISTERS, clip, due, how_it_goes, in_words, poisson, thread_due, thread_move
 from regent.field import CAME, STREAMS, alike, appetite, cool, feed, ignite, theta
+from regent.life import Life
 from regent.night import catch
 from regent.schemas import DECISION, PICTURE, SIFTED, TAKEN
 
@@ -131,6 +132,15 @@ class Field(unittest.TestCase):
         first = one[0]["a"]
         feed(one, [{"notion": "n1", "stream": "life", "strength": 1, "because": "x"}], 1, 0)
         self.assertLess(one[0]["a"] - first, first)
+
+    def test_one_stream_saying_it_again_adds_less_each_time(self):
+        f, gains = [self.notion()], []
+        for _ in range(4):
+            before = f[0]["a"]
+            feed(f, [{"notion": "n1", "stream": "use", "strength": 3, "because": "x"}], 1, 0)
+            gains.append(f[0]["a"] - before)
+        self.assertEqual(gains, sorted(gains, reverse=True))
+        self.assertLess(gains[3], gains[1] / 2 + 0.01)
 
     def test_life_and_project_meeting_lifts_it_once(self):
         f = [self.notion()]
@@ -235,6 +245,27 @@ class Crossing(unittest.TestCase):
         text, marks = unmark("a day of it.\n\nTHREAD 1: the gate is hung\nNEW: the pump is loose\n")
         self.assertEqual(text, "a day of it.")
         self.assertEqual(marks, {"THREAD 1": "the gate is hung", "NEW": "the pump is loose"})
+
+    def test_a_bold_mark_is_still_a_mark(self):
+        text, marks = unmark("a day of it.\n\n**THREAD 1:** the gate is hung\n- PROJECT: it found the letter.\n")
+        self.assertEqual(text, "a day of it.")
+        self.assertEqual(marks, {"THREAD 1": "the gate is hung", "PROJECT": "it found the letter."})
+
+    def test_an_entry_that_opens_like_a_recent_one_echoes(self):
+        before = ["# 2019-03-21  Twenty to six. Fog. Window a blank.", "Day 43. Up 5:40, tea, Argyle mug, chip."]
+        self.assertTrue(echoes("# 2019-03-22  Twenty to six. Frost on the glass.", before))
+        self.assertTrue(echoes("Day 44. Up 5:40, tea, Argyle mug, thumb on the chip.", before))
+        self.assertFalse(echoes("Couldn't settle all morning after Nula rang about the van.", before))
+
+    def test_his_own_day_leaves_the_project_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "bible.md").write_text("## Who this is\nhim\n")
+            life = Life(Path(d))
+            life.add_day("Rang Nula.\n\nThe thing found the letter.", "The thing found the letter.")
+            self.assertIn("found the letter", life.recent(1))
+            self.assertNotIn("found the letter", life.recent(1, own=True))
+            self.assertIn("Rang Nula.", life.sample(random.Random(1), 1, own=True))
+            self.assertIn(life.register, REGISTERS)
 
     def test_places_are_cut_at_the_first_fault(self):
         bible = "## Places\n**The yard.** Where he works. The gate is broken.\n\n## History\nall of it.\n"

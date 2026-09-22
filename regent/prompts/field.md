@@ -18,8 +18,10 @@ material feeds, with seed left empty; or an empty notion and a seed, a few words
 seed is a mechanism, a tension, an absence or a possibility, never a proposal and never a thing to build. stream is the
 label the material carried. strength is 1 when it only brushes it, 2 when it plainly feeds it, and 3 when it is the same
 thing arriving from somewhere else entirely. because is one plain line of what fed it, standing on its own, with no id,
-no name of a source and no word of any trade, because it is read later by someone who will not have this in front of
-them.
+no name of a source and no word of the builder's trade, because it is read later by someone who will not have this in
+front of them. When the material carries how something works in another trade or another corner of life, the ganger
+checking the gauge or the hive raising a queen, that trade and how its machinery goes stay in the line: the distance is
+what makes it worth carrying, and stripped of it the line is a platitude.
 
 Most of what a day brings touches nothing at all. An empty list is a fine answer and it is the common one. Do not reach
 for a connection to fill the list, do not feed one notion twice out of one piece, and do not invent material.

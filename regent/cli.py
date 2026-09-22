@@ -20,7 +20,7 @@ from pathlib import Path
 from regent import HOME, agents, digest, night, owner, prompts
 from regent.charter import budget, charter_faults, sections
 from regent.crossing import plain_english, words
-from regent.dice import DIALS, clip, due, poisson
+from regent.dice import DIALS, REGISTERS, clip, due, poisson, roll_register
 from regent.ledger import Context, Run
 from regent.life import Life, cast_cmd, owner_dir
 from regent.schemas import EVENTS, PURSUITS
@@ -132,6 +132,11 @@ def run_cmd(a):
             asked = f"{what} is " + prompts.load("cast").split(f"\n{what} is ")[1].split("\n\n")[0]
             f.write_text("\n".join(agents.ask(run, adapter, what, "haiku", asked + "\n\nWHO THEY ARE\n" + life.bible,
                                               schema, thinking=False)[what]) + "\n")
+    # How he keeps a journal is the same kind of thing: a life cast before it was rolled gets it rolled now,
+    # once, from his name, so the same person writes the same way on every run.
+    if "register" not in life.disp:
+        life.disp["register"] = roll_register(random.Random(life.root.name))
+        (life.root / "disposition.json").write_text(json.dumps(life.disp, indent=2))
     happenings, pursuits = ([x for x in (life.root / f"{w}.md").read_text().splitlines() if x.strip()]
                             for w in ("events", "pursuits"))
     if not life.get("stake", pname):
@@ -257,6 +262,7 @@ def main():
     c = sub.add_parser("cast", help="roll a new owner")
     c.add_argument("--pin", action="append", default=[], help="a fact in words: 'a lock keeper', 'impatient, generous'")
     c.add_argument("--dial", action="append", default=[], help=f"set a dial instead of rolling it, e.g. bold=0.6. {', '.join(DIALS)}")
+    c.add_argument("--register", default=None, choices=tuple(REGISTERS), help="how they keep a journal. Default: rolled")
     c.add_argument("--name", default=None, help="folder name. Default: their own")
     c.add_argument("--seed", type=int, default=int(time.time()))
     c.add_argument("--model", default="sonnet")

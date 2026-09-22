@@ -27,6 +27,12 @@ DIAL_WORDS = {   # each dial as behaviour, low end then high end
     "restless": ("can sit still", "cannot sit still"),
 }
 
+# How a person keeps a journal, and how many of them keep it that way. Most people who write a day down are
+# getting it off their chest or telling it in order; few write it the way a novelist's notebook does. Each is
+# a prompt file, register_<name>.md, because the writer follows an example far better than a list of adjectives.
+# Each is how many keep it that way, and how long they write against the ordinary day.
+REGISTERS = {"unload": (0.45, 1.2), "account": (0.35, 1.0), "terse": (0.2, 0.5)}
+
 TURNS = ("and it goes better than it might have", "and it goes as badly as it could",
          "and it goes sideways, neither one thing nor the other")
 MOVES = ("toward", "turns", "against", "ends")
@@ -41,6 +47,10 @@ def in_words(life: Life) -> str:
         if abs(v) >= 0.2:
             out.append(f"- {'Almost always' if abs(v) > 0.6 else 'More often than not'}, they {hi if v > 0 else lo}.")
     return "\n".join(out) or "- Nothing marked strongly either way."
+
+
+def roll_register(rng: random.Random) -> str:
+    return rng.choices(list(REGISTERS), weights=[w for w, _ in REGISTERS.values()])[0]
 
 
 def how_it_goes(rng: random.Random, mood: float) -> str:

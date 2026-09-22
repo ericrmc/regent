@@ -8,13 +8,15 @@ the builder for him, is `owner.take`.
 """
 from __future__ import annotations
 
+import difflib
 import re
 import sqlite3
 from pathlib import Path
 
 from regent import HOME, OWNERS
 
-MARK = re.compile(r"^(THREAD 1|THREAD 2|NEW):\s*(.+)$", re.M)
+# Bold, bulleted or headed, a mark is still a mark: "**THREAD 1:**" went into two of his entries as prose.
+MARK = re.compile(r"^[ \t*_#>-]*(THREAD 1|THREAD 2|NEW|PROJECT)[ \t*_]*:[ \t*_]*(.+?)[ \t*_]*$", re.M)
 NAMEY = re.compile(r"(?<![.!?]\s)(?<!^)\b[A-Z][a-z]{2,}\b", re.M)
 WORDS = re.compile(r"[a-z][a-z'\-]{3,}")
 CODEISH = re.compile(r"`[^`]+`|\b\w+_\w+\b|\breq-\d+\b|\b[\w/]+\.(?:py|md|json|txt|html|sh|toml|ya?ml|cfg|ini)\b")
@@ -40,6 +42,18 @@ def unmark(text: str) -> tuple[str, dict[str, str]]:
     is the one stage run every single day and it has to be cheap."""
     marks = {m.group(1): m.group(2).strip() for m in MARK.finditer(text)}
     return MARK.sub("", text).strip(), marks
+
+
+def opening(text: str, n: int = 8) -> list[str]:
+    """The first few words of an entry, past any date or day number the writer put at the top."""
+    return re.findall(r"\w+", re.sub(r"^\W*(\d{4}-\d\d-\d\d|day \d+)\W*", "", text.lower().strip()))[:n]
+
+
+def echoes(text: str, before: list[str]) -> bool:
+    """Whether an entry opens the way one of the last few did. Measured, never shown: the writer
+    told "do not open like this" and handed the opening copied it into some twenty-five entries."""
+    o = opening(text)
+    return any(o[:3] == (b := opening(x))[:3] or difflib.SequenceMatcher(None, o, b).ratio() >= 0.6 for x in before)
 
 
 def crossed(t: dict) -> str:

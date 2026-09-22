@@ -10,7 +10,7 @@ HOW THEY UNDERSTOOD IT BEFORE
 WHAT HAS REACHED THEM SINCE, in their own words as they took it
 {since}
 
-Write `picture` in the first person, in their own plain words, under 200 words: what this thing is, what its parts are,
+Write `picture` in the first person, in their own plain words, under 400 words: what this thing is, what its parts are,
 and what each part is for. A part is named by what it does for somebody, never by what it is made of. Where it comes
 naturally, and only there, say what a part is like in their own life, because that is how a person holds a thing they
 cannot open. Nothing of the builder's trade: no file, no command, no id, no name of a test.

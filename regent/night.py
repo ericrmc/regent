@@ -16,8 +16,8 @@ import threading
 import time
 
 from regent import agents, prompts
-from regent.crossing import places_named, unmark
-from regent.dice import clip, how_it_goes, in_words, poisson
+from regent.crossing import echoes, opening, places_named, unmark
+from regent.dice import REGISTERS, clip, how_it_goes, in_words, poisson
 from regent.field import CAME, COOLING, SPACING, cool, feed, ignite, theta
 from regent.ledger import Context
 from regent.life import todays_threads
@@ -72,25 +72,33 @@ def write_day(cx: Context, day: int, rng: random.Random, seen: list[str], met: s
     # pick from a list that was swapped under him between the looking and the choosing.
     tension = rng.choice(tens) if (tens := S["tensions"]) and rng.random() < 0.15 else ""
 
-    text = agents.ask(run, cx.adapter, "day", "haiku", prompts.load("day").format(
-        words=f"{int(clip(rng.gauss(90, 30), 40, 170))}", dials=in_words(life),
+    ask = prompts.load("day").format(
+        words=f"{int(REGISTERS[life.register][1] * clip(rng.gauss(250, 80), 100, 450))}", dials=in_words(life),
+        register=prompts.load(f"register_{life.register}"),
         # His open threads are struck out of the bible: with the list in front of it the writer wrote the
         # rheostat into four entries of four, whether or not the dice had picked it.
-        bible=re.sub(r"## Open threads.*?(?=\n## |\Z)", "", places_named(life.bible), flags=re.S)[:6000],
+        bible=re.sub(r"## Open threads.*?(?=\n## |\Z)", "", places_named(life.bible), flags=re.S)[:9000],
         when=life.calendar(day), valence="well" if mood > 0.15 else "badly" if mood < -0.15 else "evenly",
         rolled="\n".join(rolled), threads="\n\n".join(blocks) or "Nothing of his is hanging today.",
         pursuit=prompts.load("day_pursuit").format(pursuit=pursuit) if pursuit else "",
         what=cx.charter.get("intent", "")[:300] or "a small tool of their own",
-
-        recent="Do not open the entry the way the last one opened: " + life.recent(1, 90) + "\n"
-               if life.days() else "",
         # An ending is asked for as an ending. Asked where the thing stands, the writer says "still waiting",
         # which closes the row on a thread that never finished.
         first=(prompts.load("day_thread_ended") if picked and picked[0]["move"] == "ends"
                else prompts.load("day_thread_first")) if picked else "",
         second=prompts.load("day_thread_second") if len(picked) > 1 else "",
+        project="PROJECT: the two or three sentences on the project, all on this one line.\n" if seen else "",
         new=(prompts.load("day_new") + (f"He has had this nagging at him: {tension}\n" if tension else "")
-             if want_new else "")), thinking=False)
+             if want_new else ""))
+    # The opening is checked here and never shown to the writer, which copies whatever it is told to avoid.
+    # Twice at most: a third echo is kept, because a day unwritten costs more than a day that starts alike.
+    before, tries = life.latest(5), 0
+    while True:
+        text = agents.ask(run, cx.adapter, "day", "haiku", ask, thinking=False)
+        if tries == 2 or not echoes(text, before):
+            break
+        tries += 1
+        run.log("day_echo", n=life.days() + 1, opening=" ".join(opening(text)))
 
     text, marks = unmark(text)
     for i, t in enumerate(picked):
@@ -103,10 +111,16 @@ def write_day(cx: Context, day: int, rng: random.Random, seen: list[str], met: s
         if state or t["move"] == "drags on":
             t["state"] = state or t["state"]
             life.move_thread(t["id"], t["state"], day, how=t["state"] if t["move"] == "ends" else "")
+    # The project is written on its own line and put back on the end of the entry, so he reads his day whole
+    # and the field can still take the day as his life without the project in it.
+    project = marks.get("PROJECT", "").strip() if seen else ""
+    if project:
+        text = f"{text}\n\n{project}"
     opened = marks.get("NEW", "").strip()
     if want_new and len(opened) > 12:
         life.start_thread(opened, day)
-    run.log("day", n=life.add_day(text), sittings=len(seen), mood=round(mood, 2), when=life.calendar(day),
+    run.log("day", n=life.add_day(text, project), register=life.register, rerolled=tries, sittings=len(seen),
+            project_apart=bool(project) if seen else None, mood=round(mood, 2), when=life.calendar(day),
             threads=[{"id": t["id"], "text": t["text"], "move": t["move"], "state": t["state"]} for t in picked],
             opened=opened if want_new else "", pursuit=pursuit)
 
@@ -124,8 +138,8 @@ def consolidate(cx: Context, day: int):
     S, run, life, pname = cx.state, cx.run, cx.life, cx.pname
     fresh_records = to_remember(cx)
     raw = "\n\n".join(
-        f"Turn {r['turn']}. " + (f"He asked where it was up to. {r['asked'][:900]}\n" if r.get("asked") else "")
-        + f"He said: {r['message'][:500]}\nWhat he took from the answer: {r['taken'][:700]}\n"
+        f"Turn {r['turn']}. " + (f"He asked where it was up to. {r['asked'][:2000]}\n" if r.get("asked") else "")
+        + f"He said: {r['message'][:1200]}\nWhat he took from the answer: {r['taken'][:1500]}\n"
         f"The check {'passed' if r['check_ok'] else 'failed'}. New things he wanted: {r['new']}. "
         f"Ideas declined: {r['declined']}. Limits changed: {r['amended']}."
         for r in fresh_records)
@@ -168,7 +182,7 @@ def resonate(cx: Context, when: str, day: int, material: list[tuple[str, str]], 
     the arithmetic that follows is code. Most of what a day brings touches nothing at all."""
     S, run = cx.state, cx.run
     th = theta(cx.life.d, when == "night", S["refractory"])
-    stuff = "\n\n".join(f"[{s}] {t.strip()[:1400]}" for s, t in material if t and t.strip())
+    stuff = "\n\n".join(f"[{s}] {t.strip()[:3000]}" for s, t in material if t and t.strip())
     if not stuff:
         return th
     try:
@@ -248,7 +262,7 @@ def night_field(cx: Context, day: int, rng: random.Random, caught: dict, sat_tod
             + [x["answer"] for x in S["directions"] if x.get("day") == S["day_i"] + 1])
     # The gaps go in here and not from the consolidation that wrote them, because the field is one thing
     # and nothing may be adding to it while the day is. A gap is fed the night it is first written, and not again.
-    th = resonate(cx, "day", day, [("life", life.recent(1, 1200)), ("self", "\n".join(mine)),
+    th = resonate(cx, "day", day, [("life", life.recent(1, 3000, own=True)), ("self", "\n".join(mine)),
                                    ("gap", "\n".join(f"- {g}" for g in S["gaps"] if g not in S["gaps_fed"]))], rng)
     S["gaps_fed"] = list(S["gaps"])   # a gap feeds the field once. Standing unchanged, it is not news
     tried: set[str] = set()
@@ -286,20 +300,20 @@ def spoon(cx: Context, rng: random.Random, out: dict):
     P = held(cx)
     ptxt = "\n".join(f"{k}: {v[:400]}" for k, v in P.items())
     sat = agents.ask(run, cx.adapter, "saturate", "haiku",
-                     prompts.load("saturate").format(project=ptxt, life=life.recent(8, 500),
+                     prompts.load("saturate").format(project=ptxt, life=life.recent(8, 1200),
                                                      why=life.get("stake", cx.pname)), MOTIFS, thinking=False)
     motifs = "\n".join(f"- {m}" for k in ("motifs", "tensions", "questions") for m in sat[k])
     S["tensions"] = sat["tensions"][:3]   # the nights feed his life, not only the project: one may open a thread
     lean = f"{'opportunity' if cx.stance() > 0 else 'risk'}-weighted {cx.stance():+.2f}"
     # Drift runs more than once, on different models over different days, because one sampler has one groove.
-    passes = [(m, int(clip(rng.gauss(16, 4), 8, 26)), life.sample(rng, int(clip(rng.gauss(10, 3), 5, 18))),
+    passes = [(m, int(clip(rng.gauss(16, 4), 8, 26)), life.sample(rng, int(clip(rng.gauss(10, 3), 5, 18)), own=True),
                random.Random(rng.random())) for m in ("sonnet", "haiku")]
     holding: list[dict] = []
 
     def drift(model, target, days_txt, r):
         got = agents.ask(run, cx.adapter, "drift", model,
                          prompts.load("drift").format(target=target, motifs=motifs, project=ptxt, stance=lean,
-                                                      bible=life.bible[:6000], days=days_txt),
+                                                      bible=life.bible[:9000], days=days_txt),
                          LINKS, thinking=False)["links"]
         caught = catch(got, set(P), r)
         run.log("drift", model=model, asked=target, written=len(got), caught=len(caught))
@@ -346,7 +360,7 @@ def step_back(cx: Context, day: int, rng: random.Random):
                  + ("AND WHAT YOU KNOW YOU DO NOT UNDERSTAND ABOUT WHAT IT IS FOR\n"
                     + "\n".join(f"- {g}" for g in S["gaps"]) + "\n\n" if S["gaps"] else "")
                  if life.get("picture", pname) else ""),
-        days=life.sample(rng, 3, 700) or "nothing written down yet",
+        days=life.sample(rng, 3, 1800) or "nothing written down yet",
         taken="\n\n".join(r["taken"] for r in S["records"][-4:] if r.get("taken")) or "nothing yet",
         not_followed="\n".join(f"- {x}" for x in S["not_followed"]) or "- nothing you are still wondering about",
         whys="\n".join(f"- {w['text']} You said: {w['answer']}" for w in S["whys"][-6:]) or "- nothing yet",

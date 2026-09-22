@@ -66,7 +66,7 @@ def take(cx: Context, text: str, minutes: float, of: str, rng: random.Random) ->
     S, run, life, pname = cx.state, cx.run, cx.life, cx.pname
     try:
         t = agents.ask(run, cx.adapter, "take", "haiku", prompts.load("take").format(
-            who=life.who, voice=life.sample(rng, 2, 600), minutes=round(minutes),
+            who=life.who, voice=life.sample(rng, 2, 1500), minutes=round(minutes),
             # What he holds is both halves: the thing as he understands it, and what has happened to it.
             knows="\n\n".join(x for x in (life.get("picture", pname), life.get("memory", pname)) if x)
                   or "Only what he asked for at the start:\n" + cx.charter.get("intent", "")[:600],
@@ -268,7 +268,7 @@ def sitting(cx: Context, day: int, rng: random.Random, met: str) -> str:
         + (f". Today you came across this: {met}" if met else "")
         + f"\nYour stance today is {cx.stance():+.2f} on a scale from -1, cautious and wanting proof, to +1, wanting more "
         "from it.\n\n"
-        f"YOUR LAST TWO DAYS\n{life.recent(2, 500)}\n\n"
+        f"YOUR LAST TWO DAYS\n{life.recent(2, 1500)}\n\n"
         "WHAT YOU REMEMBER OF THE PROJECT (a memory, so parts are missing)\n" + (life.get("memory", pname) or "nothing yet")
         + "\n" + "\n".join(f"- {n}" for n in S["notes"][-3:]) + "\n\n"
         # The memory is what happened to it. This is what he takes the thing itself to be, and it is

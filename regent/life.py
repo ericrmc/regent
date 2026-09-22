@@ -19,7 +19,7 @@ from pathlib import Path
 from regent import HOME, OWNERS, agents, prompts
 from regent.charter import sections
 from regent.crossing import shares_a_name
-from regent.dice import DIALS, MOVES, clip, thread_due, thread_move
+from regent.dice import DIALS, MOVES, REGISTERS, clip, roll_register, thread_due, thread_move
 from regent.ledger import Run, db
 from regent.schemas import CAST
 
@@ -33,7 +33,7 @@ class Life:
     writing over the same day."""
 
     SCHEMA = """
-    CREATE TABLE IF NOT EXISTS day(n INTEGER PRIMARY KEY, iso TEXT, text TEXT);
+    CREATE TABLE IF NOT EXISTS day(n INTEGER PRIMARY KEY, iso TEXT, text TEXT, project TEXT DEFAULT '');
     CREATE TABLE IF NOT EXISTS memory(project TEXT PRIMARY KEY, text TEXT, iso TEXT);
     CREATE TABLE IF NOT EXISTS picture(project TEXT PRIMARY KEY, text TEXT);
     CREATE TABLE IF NOT EXISTS stake(project TEXT PRIMARY KEY, text TEXT);
@@ -48,6 +48,8 @@ class Life:
         d = root / "disposition.json"
         self.disp = json.loads(d.read_text()) if d.exists() else {}
         self.c = db(root / "life.db", self.SCHEMA)
+        if "project" not in {r[1] for r in self.c.execute("PRAGMA table_info(day)")}:   # a life from before
+            self.c.execute("ALTER TABLE day ADD COLUMN project TEXT DEFAULT ''")
         self.lock = threading.Lock()
 
     def d(self, k: str) -> float:
@@ -61,21 +63,38 @@ class Life:
         with self.lock:
             return self.c.execute(sql, args).fetchall()
 
-    def add_day(self, text: str) -> int:
+    @property
+    def register(self) -> str:
+        return r if (r := self.disp.get("register")) in REGISTERS else "account"
+
+    def add_day(self, text: str, project: str = "") -> int:
+        """The entry is kept whole, and the part of it that is the project is kept again beside it, so
+        whatever reads his life as his own can leave the project out without guessing where it was."""
         with self.lock:
-            return self.c.execute("INSERT INTO day(n, iso, text) VALUES ((SELECT COALESCE(MAX(n),0)+1 FROM day), ?, ?)",
-                                  (time.strftime("%F"), text)).lastrowid
+            return self.c.execute("INSERT INTO day(n, iso, text, project) VALUES "
+                                  "((SELECT COALESCE(MAX(n),0)+1 FROM day), ?, ?, ?)",
+                                  (time.strftime("%F"), text, project)).lastrowid
+
+    @staticmethod
+    def _own(text: str, project: str, own: bool) -> str:
+        return re.sub(r"\n{3,}", "\n\n", text.replace(project, "")).strip() if own and project else text
 
     def days(self) -> int:
         return self.q("SELECT COALESCE(MAX(n),0) FROM day")[0][0]
 
-    def recent(self, k: int, chars: int = 600, tail: bool = False) -> str:
-        rows = self.q("SELECT n, text FROM day ORDER BY n DESC LIMIT ?", k)
+    def recent(self, k: int, chars: int = 600, tail: bool = False, own: bool = False) -> str:
+        """`own` leaves out what he wrote about the project, for whatever takes the day as his life and
+        not as the project: the project told back to the field as life is the project meeting itself."""
+        rows = [(n, self._own(t, p, own)) for n, t, p in
+                self.q("SELECT n, text, project FROM day ORDER BY n DESC LIMIT ?", k)]
         return "\n\n".join(f"day {n}\n{'...' + t[-chars:] if tail else t[:chars]}" for n, t in reversed(rows))
 
-    def sample(self, rng: random.Random, k: int, chars: int = 700) -> str:
+    def latest(self, k: int) -> list[str]:
+        return [t for (t,) in self.q("SELECT text FROM day ORDER BY n DESC LIMIT ?", k)]
+
+    def sample(self, rng: random.Random, k: int, chars: int = 1800, own: bool = False) -> str:
         """Days drawn without replacement, recent ones likelier, old ones never impossible. That is replay."""
-        rows, top = self.q("SELECT n, text FROM day"), self.days()
+        rows, top = [(n, self._own(t, p, own)) for n, t, p in self.q("SELECT n, text, project FROM day")], self.days()
         keyed = sorted(rows, key=lambda r: rng.random() ** (1 / math.exp(-(top - r[0]) / 40)), reverse=True)[:k]
         return "\n\n".join(f"L{n}: {t[:chars]}" for n, t in sorted(keyed))
 
@@ -189,7 +208,8 @@ def cast_cmd(a):
     root = HOME / "owners" / (a.name or re.sub(r"[^a-z0-9-]", "", got["slug"].lower()) or f"owner-{a.seed}")
     root.mkdir(parents=True, exist_ok=True)
     (root / "bible.md").write_text(got["bible"].strip() + "\n")
-    (root / "disposition.json").write_text(json.dumps({**dials, "pinned": a.pin, "rolled": {"seed": a.seed, "words": rolled}}, indent=2))
+    (root / "disposition.json").write_text(json.dumps({**dials, "register": a.register or roll_register(rng), "pinned": a.pin,
+                                                       "rolled": {"seed": a.seed, "words": rolled}}, indent=2))
     (root / "events.md").write_text("\n".join(got["events"]) + "\n")
     (root / "pursuits.md").write_text("\n".join(got["pursuits"]) + "\n")
     print(f"\n{got['name']}  ->  {root}\n  " + ", ".join(f"{k} {v:+.2f}" for k, v in dials.items()) +

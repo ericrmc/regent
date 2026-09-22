@@ -1,6 +1,9 @@
-Write one day of this person's journal, the way they write for themselves: fragments, dropped subjects,
-times, names, a line someone said, a thing left hanging. {words} words. No scene-setting, no summary, no reflection, no
-lesson.
+Write one day of this person's journal, the way they write for themselves, about {words} words. Nobody else will read
+it, so there is no scene-setting for a reader and no lesson drawn at the end.
+
+HOW THEY KEEP A JOURNAL. This is the voice and the shape of it, never the content: nothing in the example happened to
+them, and none of its people, places or things are theirs.
+{register}
 
 WHO THEY ARE
 {bible}
@@ -16,7 +19,7 @@ holds for every broken, owed, unanswered or waiting thing the bible names: it is
 today's entry only if it was rolled above or named below. A thing can be wrong in his house for a year without being
 worth writing down twice. Begin in the middle, at the first thing the dice rolled. A day is what differed.
 
-WHAT THE DICE ROLLED FOR TODAY. Every one of these is in the entry, and each goes the way it is written here.
+WHAT THE DICE ROLLED FOR TODAY. Every one of these is in what they write today, and each goes the way it is written here.
 - The day went {valence}.
 {rolled}
 
@@ -28,10 +31,9 @@ person, and he is never "he" in it.
 {pursuit}THE PROJECT. What is being built for them. It is none of their own machines and nothing else they own.
 {what}
 
-When they gave it time today, that is rolled above, in their own words. It is written the way they write everything
-else, in fragments, never folded into some other thing of theirs, never a word invented past what was said. When it is
-not rolled above, the project is not in the entry at all.
+When they gave it time today, that is rolled above, in their own words. It is not in the entry itself: it goes on the
+PROJECT line below, in the same voice as the rest, never folded into some other thing of theirs, never a word invented
+past what was said. When it is not rolled above, the project is not anywhere in what they write.
 
-{recent}
 After the entry, and on their own lines, nothing before them and nothing after:
-{first}{second}{new}
+{first}{second}{project}{new}

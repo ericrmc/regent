@@ -21,7 +21,7 @@ HOW THE WORK ITSELF HAS GONE. The harness counted these and you did not recall t
 this hour.
 {view}
 
-Say why you want it now, in why_now, first person, under 150 words. It may have moved: the thing got built and you used
+Say why you want it now, in why_now, first person, under 250 words. It may have moved: the thing got built and you used
 it, or your life moved under it, or you found out what you actually wanted was next door to what you said. It may not
 have moved at all, and then you say so and say what holds it. Do not copy the old words back unless they are still the
 right ones.

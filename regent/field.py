@@ -34,8 +34,10 @@ def feed(field: list[dict], feeds: list[dict], day: int, made: int) -> int:
     """The whole arithmetic of the field, and it only adds up: nothing here decides anything. A feed
     adds its strength, worth half as much again from a stream that has not fed this notion before,
     because the same thing arriving from somewhere else entirely is worth more than one place saying
-    it twice; and a lift, once, the first time his life and the project are both feeding it, because
-    carrying the one onto the other is the whole of what he is for. Only the strongest few of a
+    it twice. One place saying it again is worth less each time: the tenth feed from the same stream
+    adds a tenth, because the builder's reports restate one finding night after night and that is not
+    ten things arriving. And a lift, once, the first time his life and the project are both feeding
+    it, because carrying the one onto the other is the whole of what he is for. Only the strongest few of a
     sitting's touches count, and a couple more of a night's."""
     seen = {n["id"]: n for n in field}
     for f in feeds:
@@ -55,6 +57,7 @@ def feed(field: list[dict], feeds: list[dict], day: int, made: int) -> int:
             gain = TOUCH
         if s not in n["streams"]:
             gain *= FRESH
+        gain /= 1 + sum(1 for x in n["fed"] if x["stream"] == s)
         bridged = {"life", "project"} <= {STREAMS.get(x, "") for x in n["streams"]}
         n["streams"] = sorted({*n["streams"], s})
         if not bridged and {"life", "project"} <= {STREAMS.get(x, "") for x in n["streams"]}:
