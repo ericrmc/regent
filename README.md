@@ -385,6 +385,32 @@ up in the person's life; then a model writes the person who fits, the table of
 things that happen in their weeks, and the things they do because they want to.
 `--pin` fixes a fact in words and `--dial` sets a dial.
 
+**Casting for the project.** A toy project can be any owner's side project, and
+a randomly cast one is the more interesting for it. A substantial project wants
+an owner cast for it, and the pins are where that happens. Three things to pin:
+
+- **The domain, not the software.** The owner should be the person the Intent
+  says the thing is for, or their stand-in, with lived experience of the
+  problem: `--pin "ran a district hospital's rosters for twenty years"`. Their
+  reason for wanting it then comes out of real use, and their asks, doubts and
+  worries are the ones a real owner would have. The rule is far from software,
+  not far from the problem.
+- **Responsibility in their history.** Someone who has been answerable for a
+  thing that could go wrong: a harbourmaster, a bursar, a ward sister, a farm
+  manager. Such people already delegate, verify by outcome, keep a reserved
+  list in their heads and say no, and it shows in how they treat the builder.
+- **Dials.** For a project with consequences, `--dial thorough=0.6
+  stubborn=0.5 trusting=-0.4`, and bold at least middling. A patient, trusting
+  owner accepts summaries; the runs so far got most of their value from an
+  owner who would not.
+
+The owner never reads code. Their second opinion is the builder's independent
+reviewer: when they ask for the code examined, for awkward cases tried, or
+whether what they have been told is true, the builder puts an adversarial
+subagent on it, one that has not seen the work in progress and is told to
+break the thing and disprove the claims, and hands the owner its findings in
+its own words. An owner cast with low trust asks for that often, and should.
+
 `--days` is how long the run lasts in the owner's life and `--turns-per-day` is
 the mean sittings a day, so `0.5` is every other day. `--dream-gap` is the mean
 nights between spoon cycles. `--model` and `--regent-model` choose the builder's
