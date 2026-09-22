@@ -852,8 +852,18 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         dog.cancel()
         drain.join(5)
         err = "" if result else ("".join(errbuf))[-400:]
+        if result.get("is_error") or (result.get("result") or "").startswith("API Error"):
+            err = (result.get("result") or "API error")[:400]
+            result = {}
         if err:
             run.say(f"   ! {role} came back with nothing: {err[-160:]}")
+            if attempt == 1:   # the API was overloaded or the server fell over. Once is weather.
+                run.log("call", role=role, model=model, seconds=round(time.time() - start, 1), cost=0, tools=len(used),
+                        denials=[], error=err)
+                time.sleep(30)
+                if session and not resume:   # the id may be taken by the session that just fell over
+                    cmd[cmd.index("--session-id") + 1] = str(uuid.uuid4())
+                continue
         secs = round(time.time() - start, 1)
         denials = [x.get("tool_name") for x in result.get("permission_denials", [])]
         run.log("call", role=role, model=model, seconds=secs, cost=result.get("total_cost_usd", 0),
@@ -870,7 +880,7 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
                 raise RuntimeError(f"{role} returned no structured output ({result.get('subtype')}): "
                                    f"{err or (result.get('result') or '')[:200]}") from None
         return {"text": result.get("result") or "", "data": structured, "seconds": secs, "denials": denials,
-                "session": result.get("session_id")}
+                "session": result.get("session_id"), "error": err}
 
 
 
@@ -1371,9 +1381,17 @@ def run_cmd(a):
         out = claude(run, role, a.model, S["handover"] + prompt, cwd=project, append=norms(), session=S["session"],
                      resume=S["started"], effort=a.effort, denied=deny,
                      settings=["--strict-mcp-config", "--setting-sources", "project", *fence], **kw)
+        S["claude_secs"] += out["seconds"]
+        if out["error"]:   # a session that fell over stays fallen: every resume of it fails the same way. Start it over.
+            S["session"], S["started"], S["session_turns"] = str(uuid.uuid4()), False, 0
+            S["handover"] = ("You are picking this project up. This is what is remembered of the work so far, and it is "
+                             "a memory, so parts are missing:\n\n" + (life.get("memory", pname) or "nothing yet") +
+                             "\n\nRead the files in this folder before you change anything.\n\n")
+            run.log("builder_failed", role=role, error=out["error"][:300])
+            out["text"] = "Nothing came back from the builder. It was not heard from at all this time."
+            return out
         S["handover"], S["started"] = "", True
         S["session"] = out["session"] or S["session"]
-        S["claude_secs"] += out["seconds"]
         return out
 
     def pending():
