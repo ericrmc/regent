@@ -84,6 +84,8 @@ from pathlib import Path
 
 HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
 SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # no tools, no servers, no settings
+BUILD_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite,MultiEdit,NotebookEdit"   # a headless turn's tools
+BLOAT_USD = 5.0   # a resumed turn that costs this much is carrying a session too big to go on with
 SPOT_USD = 0.30   # a spot check is a glance, two or three commands. The CLI enforces it, so no limiter here.
 # Every call that is not the builder replaces Claude Code's system prompt. This is what the night runs get.
 # The CLI puts today's date, the human's email and the machine into every call. That is the machinery's and not the
@@ -843,7 +845,7 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
                 raise RuntimeError(f"{role} returned no structured output ({result.get('subtype')}): "
                                    f"{err or (result.get('result') or '')[:200]}") from None
         return {"text": result.get("result") or "", "data": structured, "seconds": secs, "denials": denials,
-                "session": result.get("session_id"), "error": err}
+                "session": result.get("session_id"), "error": err, "cost": result.get("total_cost_usd", 0)}
 
 
 
@@ -1296,11 +1298,14 @@ def run_cmd(a):
         "The person who gave you the charter is away, and that is why it is yours. They are there for a reserved decision "
         "and nothing else. When you cannot tell what this is for, or who it is really for, or how far it should go, you "
         "do not ask them. You work it out from the charter, from what you have seen of the thing and from your own sense, "
-        "you decide, and you say what you decided and why where they can read it later. Making the purpose larger and "
-        "better than it was written is the job, not a liberty. When it is the thing itself you do not follow, ask the "
-        "builder.\n\n"
-        "Nobody will fetch or make things for you. If you need something to exist, "
-        "a realistic copy of your notes to try the tool on, a sample, a written explanation, ask the builder to make it."
+        "you decide, and you say what you decided and why where they can read it later. The charter's INTENT is what this "
+        "is, and it binds like a refusal: you make it larger and better than it was written, and you never put a thing of "
+        "your own in its place, however much you would like one built. When it is the thing itself you do not follow, "
+        "ask the builder.\n\n"
+        "Nothing of your life exists here. Your letters, your notes, your tools and your people are yours, and none of them "
+        "is a file the builder can open, so you never say you hold a thing it can test on. Nobody will fetch or make "
+        "things for you. If you need something to exist, a realistic copy of your notes to try the tool on, a sample, a "
+        "written explanation, ask the builder to make it, and say plainly that it is made up."
         )
 
     def norms() -> str:
@@ -1355,6 +1360,14 @@ def run_cmd(a):
             return out
         S["handover"], S["started"] = "", True
         S["session"] = out["session"] or S["session"]
+        if out["cost"] > BLOAT_USD:   # the session has swallowed too much, and every turn from here pays for all of it
+            S["session"], S["started"], S["session_turns"] = str(uuid.uuid4()), False, 0
+            S["counts"]["fresh"] += 1
+            S["handover"] = ("You are picking this project up. This is what is remembered of the work so far, and it is "
+                             "a memory, so parts are missing:\n\n" + (life.get("memory", pname) or "nothing yet") +
+                             "\n\nRead the files in this folder before you change anything.\n\n")
+            run.log("bloated", role=role, cost=round(out["cost"], 2))
+            run.say(f"   (that turn cost ${out['cost']:.2f}: a fresh builder picks it up next, from his memory of it)")
         return out
 
     def pending():
@@ -1612,7 +1625,8 @@ def run_cmd(a):
                if pend else "")
             + (f"WHAT YOU TOOK FROM WHAT THE BUILDER SAID BACK\n{reading}\n\n" if reading else
                ("THIS PROJECT ALREADY EXISTS. Nothing has been said yet. Try it first.\n\n" if S["existing"] else
-                "NOTHING HAS BEEN BUILT YET. This is your first message. Say what you want built and the limits.\n\n"))
+                "NOTHING HAS BEEN BUILT YET. This is your first message. Say what you want built of the thing the charter's "
+                "Intent describes, in your own words, and the limits.\n\n"))
             # He is told whether it passed and no more. What a failing check meant was folded into the reading above.
             + ("THE HARNESS RAN THE CHECK AFTER THE BUILDER'S LAST TURN. It "
                + ("passed.\n\n" if S["check_ok"] else "failed.\n\n") if S["last_check"] else "")
@@ -1784,7 +1798,7 @@ def run_cmd(a):
         # as a standing order.
         lead = ("The questions are over, and the hold on changing things with them. This is the work.\n\n"
                 if asking or named else "")
-        out = builder("claude", lead + message + answers, allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
+        out = builder("claude", lead + message + answers, tools=BUILD_TOOLS, allowed=BUILD_TOOLS)
         # The builder may stop part-way for his word. A sitting is a stretch of his time, and with an hour a person
         # goes back and forth; with a few minutes he does not. Each exchange is another builder turn on his clock.
         exchanges, left = 0, minutes
@@ -1810,7 +1824,7 @@ def run_cmd(a):
             S["records"][-1]["message"] += "\n\n[it stopped and asked; he said] " + got["said"][:400]
             out = builder("claude", got["said"] + ("\n\nThat is all from me today. Finish as best you can and do not "
                                                   "wait on me again." if got["leave"] else ""),
-                          allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
+                          tools=BUILD_TOOLS, allowed=BUILD_TOOLS)
             if got["leave"]:
                 break
         out["text"] = re.sub(r"^\s*WAITING ON HIM\.?\s*$", "", out["text"], flags=re.M).strip()
