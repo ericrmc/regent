@@ -1155,6 +1155,10 @@ def watch_cmd(a, root: Path | None = None, background: bool = False):
 def run_cmd(a):
     project = Path(a.project).expanduser().resolve()
     project.mkdir(parents=True, exist_ok=True)
+    top = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if not top.stdout.strip() or Path(top.stdout.strip()).resolve() != project:
+        subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)   # its own, or its commits land above it
+        print(f"charter: {project.name} had no repository of its own; one is made, so the builder's commits stay in it")
     runs = Path(a.runs).expanduser() if a.runs else HOME / "runs"
     prior = sorted(runs.glob(f"{project.name}-*"))
     root = None
@@ -1606,7 +1610,9 @@ def run_cmd(a):
                + "\n".join(f"- {x['text']}" for x in S["directions"]) + "\n\n" if S["directions"] else "")
             + "WHAT YOU HAVE ASKED FOR SO FAR, under your own names for them. Put the name of any you have now seen "
               "working in requirements_built.\n"
-            + ("\n".join(f"- \"{q.get('name') or q['id']}\" [{q['status']}]: {q['text']}" for q in S["reqs"]) or "- nothing yet") + "\n\n"
+            + ("\n".join(f"- \"{q.get('name') or q['id']}\" [{q['status']}"
+                          + (", the builder says it is there and you have not seen it yet" if q["status"] == "open" and q.get("delivered") else "")
+                          + f"]: {q['text']}" for q in S["reqs"]) or "- nothing yet") + "\n\n"
             + ("THESE ARE OPEN AND THEY ARE YOURS. You do not know where they came from. They are not all the "
                "same kind of thing and they are not all work.\n"
                + "\n".join(f"- {i['label']} [{i.get('kind', 'ask')}] {i['text']}"
@@ -1838,11 +1844,15 @@ def run_cmd(a):
         if check_cmd:
             S["last_check"], S["check_ok"] = shell(check_cmd, project, a.timeout, 25)
             run.log("check", ok=S["check_ok"], tail=S["last_check"][-600:])
+            if S["check_ok"]:   # the builder's turn on today's wants ended with the check passing: delivered, not yet seen
+                for q in S["reqs"]:
+                    if q["turn"] == turn and not q.get("delivered"):
+                        q["delivered"] = turn
             run.say(f"   check {'passed' if S['check_ok'] else 'FAILED'}: "
                     f"{S['last_check'].splitlines()[-1] if S['last_check'] else ''}")
         # Trust moves on what he sees every sitting, not only the few times he tries the thing himself: the check,
         # a thing he saw working, a thing the builder took wrong, and a thing he asked for that has not come.
-        stale = sum(1 for q in S["reqs"] if q["status"] == "open" and turn - q["turn"] > 3)
+        stale = sum(1 for q in S["reqs"] if q["status"] == "open" and not q.get("delivered") and turn - q["turn"] > 3)
         wrong = sum(1 for x in S["assumptions"] if x.get("turn") == turn and not x["holds"])
         S["trust"] = clip(S["trust"] + (0.01 if S["check_ok"] else -0.05 if check_cmd else 0)
                           + 0.02 * min(3, len(built_now)) - 0.05 * wrong - 0.03 * min(2, stale), 0, 1)
@@ -2150,6 +2160,7 @@ def run_cmd(a):
                 "challenged": S["counts"]["challenge"], "constrained": S["counts"]["constrain"],
                 "checks_failed": sum(1 for x in run.rows("check") if not x["ok"]),
                 "requirements": len(S["reqs"]), "requirements_built": sum(1 for q in S["reqs"] if q["status"] == "built"),
+                "delivered_by_the_builder_and_not_yet_seen_by_you": sum(1 for q in S["reqs"] if q["status"] == "open" and q.get("delivered")),
                 "requirements_per_sitting": [len(x.get("new") or []) for x in sit],
                 "ideas_you_woke_with": len(S["ideas"]), "ideas_taken": sum(1 for i in S["ideas"] if i["status"] == "taken"),
                 "ideas_declined": [{"idea": i["text"][:80], "why": i.get("why", "")}
@@ -2303,7 +2314,7 @@ def run_cmd(a):
                      f"and was still waiting on {sum(1 for e in S['escalations'] if not e.get('answered'))} of them.")
     lines = [f"# {project.name}", "", spent, "", did, "", crossing, "", nights, "", appetite_line, "",
              f"## Requirements: {built} built of {len(S['reqs'])}, {dreamt} from the nights", ""]
-    lines += [f"- {q['id']} \"{q.get('name') or q['id']}\" [{q['status']}] sitting {q['turn']}"
+    lines += [f"- {q['id']} \"{q.get('name') or q['id']}\" [{q['status']}{', delivered' if q['status'] == 'open' and q.get('delivered') else ''}] sitting {q['turn']}"
               f"{' (night)' if q['from_dream'] else ''}: {q['text']}"
               + (f"\n  he would notice: {q['notice']}" if q.get("notice") else "")
               + (f"\n  the builder took it as: {q['spec']}" if q.get("spec") else "")

@@ -69,7 +69,8 @@ unfinished run at its next day; `--new` starts over.
 
 - The builder is Claude Code with permission to edit, run and commit inside the
   project directory. Point it at a git repository, ideally a branch or a
-  worktree.
+  worktree. A project with no repository of its own gets one made at the start,
+  so its commits never land in a repository above it.
 - Both the owner and the builder work inside Claude Code's sandbox. A shell can
   write only inside the project and reach only the domains the charter lists
   under `## Network`. No Network section means no network.
