@@ -81,87 +81,55 @@ unfinished run at its next day; `--new` starts over.
 
 ```mermaid
 flowchart TB
-    subgraph you["You, mostly absent"]
-        charter["Charter: intent, limits, refusals, reserved decisions"]
-        notes["say / plant"]
-        digest["Digest and watch page"]
+    you["You: charter, notes, digest"]
+    life["A life: dice roll the day, a small model writes it"]
+    crossing["The crossing: the builder's words become what they took"]
+    memory["Memory: what happened, a picture of the thing, why they want it"]
+    field["The field: notions gather and cross a threshold"]
+    sitting["The sitting: the owner decides and speaks"]
+    builder["The builder: Claude Code in your project"]
+
+    you --> sitting
+    life --> field
+    crossing --> memory
+    crossing --> field
+    memory --> sitting
+    field --> sitting
+    sitting --> builder
+    builder --> crossing
+    builder --> you
+```
+
+Each box is a layer with its own model calls, and each arrow is a narrow
+channel: nothing crosses it unchanged. The builder's words never reach the
+sitting except as what the owner took from them; the night never reaches the
+sitting except as a notion that gathered enough to arrive.
+
+```mermaid
+sequenceDiagram
+    participant D as Dice
+    participant O as Owner
+    participant B as Builder
+    participant N as Night
+
+    D->>O: mood, minutes, how many sittings today
+    loop each sitting
+        O->>B: what they want, spoken and named
+        B->>O: says it back, may ask first
+        O->>B: answers, then the build
+        B-->>O: reply, crossed into a reading
+        Note over O: check and show run, trust moves
     end
-
-    subgraph life["The owner's life: dice roll it, a small model writes it"]
-        dice["Dice: mood, events, pursuits, which threads move, how many sittings"]
-        journal["Journal day"]
-        threads["Threads left hanging, each with where it stands"]
-        dice --> journal
-        threads <--> journal
-    end
-
-    subgraph crossing["The crossing: perception and speech"]
-        reading["Reading: what they took, what they did not follow, what they did not get to"]
-        words["Words of the trade they have picked up"]
-        spoken["Spoken message and named wants"]
-        readback["Read-back: the builder says each want back, and may ask first"]
-        words --> reading
-    end
-
-    subgraph memory["Memory, consolidated each night"]
-        episodic["Memory of what happened, lossy"]
-        picture["Picture of the thing in their own terms, and its gaps"]
-        why["Why they want it, rewritten in time away from the work"]
-    end
-
-    subgraph nights["The night: none of it is the owner"]
-        saturate["Saturate: motifs and tensions"]
-        drift["Drift: links between the project and anything else"]
-        catchstep["Catch: keep links that hold on to the project"]
-        saturate --> drift --> catchstep
-    end
-
-    subgraph field["The field: below notice"]
-        resonate["Resonate: what feeds what"]
-        notions["Notions with activation: gains from new sources, leaks nightly"]
-        threshold["Threshold: set by disposition, lower asleep, raised after each arrival"]
-        sift["Sift: says one crossed notion as an ask, a doubt, a wish or a worry"]
-        resonate --> notions --> threshold --> sift
-    end
-
-    sitting["The sitting: the owner decides. Takes, answers or declines what arrived, says what they want, sets limits, asks where it is up to, tries the thing, pushes when it goes stale"]
-
-    subgraph builder["The builder: Claude Code in your project"]
-        build["Build turn, with subagents for reviews"]
-        checks["Check and Show commands, run by the harness"]
-        build --> checks
-    end
-
-    ledger[("Ledger: every event, resumable state")]
-
-    charter --> sitting
-    notes --> sitting
-    journal --> resonate
-    journal --> saturate
-    catchstep --> resonate
-    reading --> resonate
-    picture --> resonate
-    reading --> sitting
-    episodic --> sitting
-    picture --> sitting
-    why --> sitting
-    sift --> sitting
-    sitting --> spoken --> readback --> build
-    build --> reading
-    checks --> sitting
-    reading --> episodic
-    reading --> picture
-    sitting --> why
-    saturate -. "a tension may open a thread" .-> threads
-    sitting --> ledger
-    build --> ledger
-    ledger --> digest
+    D->>N: journal day written, threads move
+    N->>N: memory and picture consolidated
+    N->>N: saturate, drift, catch, resonate
+    N-->>O: what crossed the threshold waits for morning
+    Note over O,N: now and then, time away rewrites the why
 ```
 
 A turn is a **sitting**: one decision by the owner, then one turn by the
-builder. Everything else in the diagram exists to decide what the owner is
-shown when they sit down, and nothing else stands between the owner and Claude
-Code.
+builder. Everything else exists to decide what the owner is shown when they
+sit down, and nothing else stands between the owner and Claude Code.
 
 ### A life
 
