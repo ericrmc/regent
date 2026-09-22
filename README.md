@@ -17,7 +17,9 @@ owner who thinks like the builder asks for what the builder would have built
 anyway.
 
 Regent is experimental. It is one Python file and one HTML page, with no
-dependencies beyond the `claude` CLI.
+dependencies beyond the `claude` CLI. At the start of every run it prints what
+it read from the charter, and every line it could not read, because the run is
+days long and you will not be there.
 
 ## Why a person, and not a prompt
 
@@ -358,6 +360,7 @@ a worked one.
 | Network | Domains a shell may reach, one per `-` line. Absent means none |
 | Check | One shell command run after every sitting. Its exit code is pass or fail |
 | Show | One shell command that uses the thing. This is how the owner sees it work |
+| Stop | When the run is finished, in words. The owner reads it and can call the run done early; the harness stops when the check agrees |
 
 ## Commands
 

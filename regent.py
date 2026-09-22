@@ -694,16 +694,52 @@ class Run:
             self.c.close()
 
 
+HEADINGS = ("intent", "constraints", "refusals", "reserved", "budget", "tools", "network", "check", "show", "stop")
+
+
 def sections(md: str) -> dict[str, str]:
     out, name = {}, "_"
     for line in md.splitlines():
         m = re.match(r"^##\s+(.*)", line)
         if m:
             name = m.group(1).strip().lower()
-            out[name] = ""
+            out.setdefault(name, "")   # a heading written twice keeps both halves, not the last one
         else:
             out[name] = out.get(name, "") + line + "\n"
     return {k: v.strip() for k, v in out.items()}
+
+
+def charter_faults(md: str, ch: dict[str, str]) -> list[str]:
+    """What two runs of a simulated owner found the harness doing in silence with a charter: filing a near-miss
+    heading under the section above, swapping a figure it could not read for a default, dropping a Tools or Network
+    line with no dash. Each is said once at the start of a run, because the run is days long and the person is away."""
+    faults = []
+    for i, line in enumerate(md.splitlines(), 1):
+        if re.match(r"^(###+|##)(?!#)\s*\w", line) and not re.match(r"^##\s+\S", line):
+            faults.append(f"line {i} looks like a heading and is not read as one: {line.strip()[:40]}")
+    for name in ch:
+        if name != "_" and name not in HEADINGS:
+            near = [h for h in HEADINGS if abs(len(h) - len(name)) <= 2 and sum(a != b for a, b in zip(h, name)) <= 2]
+            faults.append(f"## {name} is not a section the harness reads" + (f", did you mean {near[0]}" if near else ""))
+    if not ch.get("intent"):
+        faults.append("no Intent, and the builder is told nothing but what the owner says")
+    for key in ("days", "turns_per_day", "turns"):
+        for m in re.finditer(rf"^\s*{key}:\s*(.*)$", ch.get("budget", ""), re.M):
+            if not re.fullmatch(r"\d+(\.\d+)?", m.group(1).strip()):
+                faults.append(f"Budget {key}: {m.group(1).strip()!r} is not a number and is ignored")
+    for sec in ("tools", "network"):
+        for line in ch.get(sec, "").splitlines():
+            if line.strip() and not line.strip().startswith("-"):
+                faults.append(f"{sec.title()} line has no dash and is ignored: {line.strip()[:40]}")
+            elif line.strip("- ").strip() == "":
+                faults.append(f"{sec.title()} has an empty dash line, ignored")
+    for d in (ln.strip("- ").strip() for ln in ch.get("network", "").splitlines() if ln.strip().startswith("-")):
+        if d and not re.fullmatch(r"[\w.-]+", d):
+            faults.append(f"Network {d!r} is not a bare domain")
+    for sec in ("check", "show"):
+        if "\n" in ch.get(sec, ""):
+            faults.append(f"{sec.title()} is more than one line and runs as one shell command")
+    return faults
 
 
 class Strip(http.server.BaseHTTPRequestHandler):
@@ -1201,6 +1237,7 @@ def run_cmd(a):
     S.setdefault("refractory", 0.0)    # what the last arrivals put on the threshold, decaying every night
     S.setdefault("gaps", [])           # what he knows he does not understand about what this is for
     S.setdefault("gaps_fed", [])
+    S.setdefault("done_at", 0)
     S.setdefault("same", 0.0)          # a running average of how little each sitting changed anything
     S["counts"].setdefault("asks", 0)
     S["counts"].setdefault("readbacks", 0)
@@ -1208,18 +1245,23 @@ def run_cmd(a):
     ch = sections(S["charter"])
 
     def budget(key: str) -> float:
-        m = re.search(rf"^{key}:\s*([\d.]+)", ch.get("budget", ""), re.M)
+        m = re.search(rf"^\s*{key}:\s*(\d+(?:\.\d+)?)\s*$", ch.get("budget", ""), re.M)
         return float(m.group(1)) if m else 0.0
     tpd = a.turns_per_day or S.get("tpd") or budget("turns_per_day") or 1.0
-    days = a.days or S.get("days") or int(budget("days") or budget("turns") / tpd) or 10
+    days = a.days or S.get("days") or math.ceil(budget("days") or budget("turns") / tpd) or 10
     S["tpd"], S["days"] = tpd, days
     check_cmd, show_cmd = ch.get("check", "").strip().strip("`"), ch.get("show", "").strip().strip("`")
-    tool_lines = [ln.strip("- ").strip() for ln in ch.get("tools", "").splitlines() if ln.strip().startswith("-")]
+    tool_lines = [t for ln in ch.get("tools", "").splitlines() if ln.strip().startswith("-") and (t := ln.strip("- ").strip())]
     his_bash = ",".join(sorted({f"Bash({t.split()[0]}:*)" for t in tool_lines})) or "Bash(ls:*)"
-    deny = ["WebFetch", "WebSearch"] if re.search(r"network", ch.get("refusals", ""), re.I) else []
+    # The web is the Network section's to open, not a word's to close: no domains listed, no web tools.
+    domains = [ln.strip("- ").strip() for ln in ch.get("network", "").splitlines() if ln.strip().startswith("-")]
+    deny = [] if domains else ["WebFetch", "WebSearch"]
+    for fault in charter_faults(S["charter"], ch):
+        print(f"charter: {fault}")
+    print(f"charter: {days} days at {tpd:g} sittings a day; the owner may run {', '.join(sorted({t.split()[0] for t in tool_lines})) or 'ls'}; "
+          f"web {'open to ' + ', '.join(domains) if domains else 'off'}; check {'set' if check_cmd else 'none'}, show {'set' if show_cmd else 'none'}")
     # Claude Code's own sandbox holds them both: a shell can write only inside the project and reach only the domains the
     # charter's Network section lists. A builder's subagent once left its scratch files in /tmp, and nothing stopped it.
-    domains = [ln.strip("- ").strip() for ln in ch.get("network", "").splitlines() if ln.strip().startswith("-")]
     fence = ["--settings", json.dumps({"sandbox": {"enabled": True, "autoAllowBashIfSandboxed": True,
                                                    "allowUnsandboxedCommands": False, "network": {"allowedDomains": domains}}})]
     inbox, plant_file = root / "inbox.md", root / "plant.md"
@@ -1313,7 +1355,9 @@ def run_cmd(a):
             "an output, put it in the final message, whole, and the word limit does not count it: a file he asked for is "
             "never cut, summarised or replaced by an account of it. The harness runs the check and the thing itself after your turn and "
             "shows him, so do not paste command output unless he asks.\n\nThese are never crossed:\n"
-            + ch.get("refusals", "") + "\n\nThese are the starting constraints:\n" + ch.get("constraints", "")
+            + ch.get("refusals", "") + "\n\nThese decisions are the human's alone. Neither you nor the owner makes them; "
+            "if the work needs one, say so and carry on with the rest:\n" + (ch.get("reserved", "") or "- none")
+            + "\n\nThese are the starting constraints:\n" + ch.get("constraints", "")
             + ("\n\nThe owner has since changed these limits, and his change stands:\n" + "\n".join(
                 f"- was: {x['constraint']} / now: {x['now']}" for x in S["amended"]) if S["amended"] else ""))
 
@@ -1748,6 +1792,7 @@ def run_cmd(a):
                 f"   [borrowed {borrowed:.0%}, {codeish} code-ish]")
         quiet = not (d["wants_new"] or pend or d["challenged"] or d["constrained"]) and d["verdict"] == "accept"
         S["dry"] = S["dry"] + 1 if quiet else 0
+        S["done_at"] = turn if d["done"] else 0   # a later sitting that wants more takes it back
         moved_him = bool(d["wants_new"] or answered or direction)
 
         answers = read_back(d["message"], message, named, minutes, rng) if named else ""
@@ -2178,6 +2223,9 @@ def run_cmd(a):
         S["blocking"] += time.time() - t
         S["day_i"] += 1
         run.save(S)
+        if S.get("done_at") and S["check_ok"]:   # he called it finished and the check agrees: the charter's Stop is his to read
+            run.say(f"day {day}: he called it done.")
+            break
 
     S["finished"] = True
     run.save(S)

@@ -65,4 +65,3 @@ The run ends unsuccessfully when the budget is spent, when a refusal is
 hit, or when three consecutive cycles pass with no change to the
 artefact.
 
-digest_every: 10 turns
