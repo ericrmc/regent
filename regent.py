@@ -109,6 +109,7 @@ DECISION = obj(
     ideas_answered=arr(obj(idea=STR, answer=STR)),
     constraints_changed=arr(obj(constraint=STR, now=STR, why=STR)), ask_the_human=STR,
     wants_to_look=BOOL, looked_at=arr(STR), look_matched=BOOL, notes_to_self=STR, done=BOOL)
+ANSWERED_BACK = obj(said=STR, leave=BOOL)
 ASKED = obj(question=STR, assumptions=arr(obj(assumption=STR, holds=BOOL, why=STR)), enough=BOOL)
 TAKEN = obj(taken=STR, not_followed=arr(STR), not_reached=STR, picked_up=arr(STR))
 READBACK = obj(readings=arr(obj(name=STR, spec=STR, test=STR)), questions=arr(STR))
@@ -1364,7 +1365,11 @@ def run_cmd(a):
             "nothing a tool printed and nothing you wrote earlier in the turn reaches him, so if he asks to see a file or "
             "an output, put it in the final message, whole, and the word limit does not count it: a file he asked for is "
             "never cut, summarised or replaced by an account of it. The harness runs the check and the thing itself after your turn and "
-            "shows him, so do not paste command output unless he asks.\n\nThese are never crossed:\n"
+            "shows him, so do not paste command output unless he asks. "
+            "When you reach a point where his word would change what you do next, a choice you cannot settle, something "
+            "that surprised you, a first version he should see before it goes further, you may stop there and report, "
+            "ending your message with a line that says only WAITING ON HIM. He answers if he has time, and you go on. "
+            "Otherwise finish the work and end without that line.\n\nThese are never crossed:\n"
             + ch.get("refusals", "") + "\n\nThese decisions are the human's alone. Neither you nor the owner makes them; "
             "if the work needs one, say so and carry on with the rest:\n" + (ch.get("reserved", "") or "- none")
             + "\n\nThese are the starting constraints:\n" + ch.get("constraints", "")
@@ -1453,7 +1458,8 @@ def run_cmd(a):
                          "what you take it to mean as a precise requirement, and how you would prove it is working. Then "
                          "ask up to three questions in plain words he could answer standing in a yard: only what you "
                          "cannot settle by reading the project or by a sensible default. None is a fine answer. Read what "
-                         "you need, change nothing, commit nothing.", schema=READBACK, who="readback", **read_only)
+                         "you need, change nothing, commit nothing.", schema=READBACK, who="readback", thinking=False,
+                         **read_only)
         except Exception as e:   # a read-back that fails costs the exchange, not the sitting
             run.log("readback_failed", n=S["turn"], error=str(e)[:300])
             return ""
@@ -1821,10 +1827,40 @@ def run_cmd(a):
         lead = ("The questions are over, and the hold on changing things with them. This is the work.\n\n"
                 if asking or named else "")
         out = builder("claude", lead + message + answers, allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
+        # The builder may stop part-way for his word. A sitting is a stretch of his time, and with an hour a person
+        # goes back and forth; with a few minutes he does not. Each exchange is another builder turn on his clock.
+        exchanges, left = 0, minutes
+        while re.search(r"^\s*WAITING ON HIM\.?\s*$", out["text"], re.M) and exchanges < a.exchanges and left >= 20:
+            said_back = re.sub(r"^\s*WAITING ON HIM\.?\s*$", "", out["text"], flags=re.M).strip()
+            their_words.update(words(said_back))
+            heard = take(said_back, left, "exchange", rng)
+            t = time.time()
+            try:
+                got = ask(run, "regent", a.regent_model, "You said this to the builder a moment ago:\n\n" + message
+                          + "\n\nIt has stopped part-way and is waiting on your word. WHAT YOU TOOK FROM WHAT IT SAID\n"
+                          + heard + f"\n\nAnswer standing there, under {int(min(200, 60 + left))} words, no file names and "
+                          "no commands, and it will go on. Set leave true if you would rather leave it there for today and "
+                          "have it finish as best it can.", ANSWERED_BACK, system())
+            except RuntimeError as e:
+                run.log("answer_failed", n=turn, error=str(e)[:200])
+                break
+            S["blocking"] += time.time() - t
+            exchanges += 1
+            left -= 20
+            run.log("exchange", n=turn, k=exchanges, raw=said_back, taken=heard, said=got["said"], leave=got["leave"])
+            run.say(f"   {life.root.name} > {got['said'][:140].replace(chr(10), ' ')}   (exchange {exchanges})")
+            S["records"][-1]["message"] += "\n\n[it stopped and asked; he said] " + got["said"][:400]
+            out = builder("claude", got["said"] + ("\n\nThat is all from me today. Finish as best you can and do not "
+                                                  "wait on me again." if got["leave"] else ""),
+                          allowed="Bash,Edit,Write,Read,Glob,Grep,Task,Agent,TodoWrite")
+            if got["leave"]:
+                break
+        out["text"] = re.sub(r"^\s*WAITING ON HIM\.?\s*$", "", out["text"], flags=re.M).strip()
         their_words.update(words(out["text"]))
-        S["session_turns"] += 1
+        S["session_turns"] += 1 + exchanges
+        S["counts"]["exchanges"] = S["counts"].get("exchanges", 0) + exchanges
         S["last_reply"] = out["text"]
-        run.log("reply", n=turn, text=out["text"], seconds=out["seconds"])
+        run.log("reply", n=turn, text=out["text"], seconds=out["seconds"], exchanges=exchanges)
         if out["denials"]:
             run.say(f"   ! {len(out['denials'])} tool calls refused: {out['denials']}")
         if check_cmd:
@@ -2034,7 +2070,7 @@ def run_cmd(a):
                                    + (f" His reason: {i['why']}" if i.get("why") else "") for i in before)
                        + "\nSaying that again is worth nothing to him. It has gathered more since. Bring the next "
                          "thing it has become: the first small piece of what he took as a direction, or the part the "
-                         "last one left unanswered.\n\n") if before else ""), SIFTED)["candidates"]
+                         "last one left unanswered.\n\n") if before else ""), SIFTED, thinking=False)["candidates"]
             got = cands[0] if cands else None
         except Exception as e:   # an arrival that fails costs the idea, not the run
             run.log("arrival_failed", where=where, notion=n["id"], error=str(e)[:300])
@@ -2107,7 +2143,7 @@ def run_cmd(a):
         P = held()
         ptxt = "\n".join(f"{k}: {v[:400]}" for k, v in P.items())
         sat = ask(run, "saturate", "haiku", SATURATE_P.format(project=ptxt, life=life.recent(8, 500),
-                                                              why=life.get("stake", pname)), MOTIFS)
+                                                              why=life.get("stake", pname)), MOTIFS, thinking=False)
         motifs = "\n".join(f"- {m}" for k in ("motifs", "tensions", "questions") for m in sat[k])
         S["tensions"] = sat["tensions"][:3]   # the nights feed his life, not only the project: one may open a thread
         lean = f"{'opportunity' if stance() > 0 else 'risk'}-weighted {stance():+.2f}"
@@ -2118,7 +2154,7 @@ def run_cmd(a):
 
         def drift(model, target, days_txt, r):
             got = ask(run, "drift", model, DRIFT_P.format(target=target, motifs=motifs, project=ptxt, stance=lean,
-                                                           bible=life.bible[:6000], days=days_txt), LINKS)["links"]
+                                                           bible=life.bible[:6000], days=days_txt), LINKS, thinking=False)["links"]
             caught = catch(got, set(P), r)
             run.log("drift", model=model, asked=target, written=len(got), caught=len(caught))
             holding.extend(caught)
@@ -2279,7 +2315,8 @@ def run_cmd(a):
                 f"{len(S['words'])} words of the builder's trade"
                 + (": " + ", ".join(w["word"] for w in S["words"]) if S["words"] else "") + ". The builder said his wants "
                 f"back to him {c['readbacks']} times before building them, and asked him something first "
-                f"{asked_first} of those.")
+                f"{asked_first} of those. It stopped part-way for his word {c.get('exchanges', 0)} times, and he answered "
+                "in the same sitting.")
     kinds = {"ask": "asks", "doubt": "doubts", "wish": "wishes", "worry": "worries"}
     by_kind = {k: sum(1 for i in S["ideas"] if i.get("kind", "ask") == k) for k in kinds}
     moved = sum(1 for a_, b in zip(S["stakes"], S["stakes"][1:]) if a_["text"] != b["text"])
@@ -2373,6 +2410,7 @@ def main():
     r.add_argument("--model", default="sonnet", help="the builder")
     r.add_argument("--regent-model", default="sonnet")
     r.add_argument("--effort", default="low")
+    r.add_argument("--exchanges", type=int, default=4, help="how many times a sitting the builder may stop and ask him")
     r.add_argument("--timeout", type=int, default=600, help="seconds for the charter's Check and Show commands")
     r.add_argument("--plant", action="append", default=[], help="something he comes across. He never learns it was yours")
     r.add_argument("--watch", action="store_true", help="open the live page in a browser while it runs")

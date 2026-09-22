@@ -181,6 +181,14 @@ reading the project. The owner answers standing there and says what has been
 taken wrong. The harness keeps both faces of every requirement: the owner's
 words and the builder's specification.
 
+A sitting is a stretch of the owner's time, and with an hour a person goes
+back and forth. The builder may stop part-way when the owner's word would
+change what it does next, a choice it cannot settle, something surprising, a
+first version worth seeing, and report. If the owner's minutes allow, they
+answer standing there and the builder goes on, up to `--exchanges` times a
+sitting (four by default); with a few minutes they do not, and the builder
+finishes as best it can.
+
 Every sitting the harness measures the share of the owner's words that came
 from the builder and appear nowhere in their life. It is on the watch page as a
 chart. Without the crossing it climbs steadily; with it, it stays low and flat.
