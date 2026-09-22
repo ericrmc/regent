@@ -67,7 +67,6 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import http.client
 import http.server
 import json
 import math
@@ -87,7 +86,12 @@ HOME = Path(os.environ.get("REGENT_HOME", Path.home() / ".regent"))
 SEALED = ["--strict-mcp-config", "--setting-sources", ""]  # no tools, no servers, no settings
 SPOT_USD = 0.30   # a spot check is a glance, two or three commands. The CLI enforces it, so no limiter here.
 # Every call that is not the builder replaces Claude Code's system prompt. This is what the night runs get.
-PLAIN = ("You are one stage of a longer process, not an assistant in a conversation and not a programmer. "
+# The CLI puts today's date, the human's email and the machine into every call. That is the machinery's and not the
+# owner's, and no stage may let it in. On an API key --bare leaves it out; on a login one sentence has to do.
+UNSEEN = ("Anything that reached you before the message about a computer, a folder, an email address, a model or a date "
+          "belongs to the machinery this runs on and to nobody in it. It is not in the world of the person or the "
+          "project, and nothing of it is ever used, mentioned or alluded to. ")
+PLAIN = (UNSEEN + "You are one stage of a longer process, not an assistant in a conversation and not a programmer. "
          "Do what the message asks, in the form it asks for, and add nothing around it.")
 DIALS = ("bold", "curious", "patient", "trusting", "thorough", "stubborn", "restless")
 
@@ -743,51 +747,6 @@ def charter_faults(md: str, ch: dict[str, str]) -> list[str]:
     return faults
 
 
-class Strip(http.server.BaseHTTPRequestHandler):
-    """The CLI tells every model today's date, the human's email and the machine it is on, in reminders placed before
-    the prompt. --bare turns that off but only on an API key; on a login, calls that are not the builder go to the API
-    through this, which drops them."""
-
-    def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        if "/v1/messages" in self.path:
-            try:
-                req = json.loads(body)
-                for m in req.get("messages", []):
-                    if isinstance(m.get("content"), list):
-                        m["content"] = [b for b in m["content"]
-                                        if not str(b.get("text", "")).lstrip().startswith("<system-reminder>")] or m["content"]
-                body = json.dumps(req).encode()
-            except ValueError:
-                pass
-        head = {k: v for k, v in self.headers.items() if k.lower() not in {"host", "content-length", "accept-encoding", "connection"}}
-        up = http.client.HTTPSConnection("api.anthropic.com", timeout=900)
-        up.request(self.command, self.path, body, {**head, "Content-Length": str(len(body)), "Accept-Encoding": "identity"})
-        r = up.getresponse()
-        self.send_response(r.status)
-        for k, v in r.getheaders():
-            if k.lower() not in {"transfer-encoding", "content-length", "connection"}:
-                self.send_header(k, v)
-        self.send_header("Connection", "close")
-        self.end_headers()
-        while chunk := r.read1(65536):
-            self.wfile.write(chunk)
-            self.wfile.flush()
-
-    do_GET = do_POST
-
-    def log_message(self, *_):
-        pass
-
-
-def stripped(_made: list = []) -> dict:   # noqa: B006  the default list is the point: one server for the process
-    if not _made:
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Strip)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        _made.append(f"http://127.0.0.1:{server.server_address[1]}")
-    return {**os.environ, "ANTHROPIC_BASE_URL": _made[0]}
-
-
 def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: str | None = None,
            append: str | None = None, tools: str | None = None, allowed: str | None = None,
            denied: list[str] | None = None, schema: dict | None = None, session: str | None = None,
@@ -811,10 +770,9 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         cmd += ["--resume", session] if resume else ["--session-id", session]
     else:
         cmd += ["--no-session-persistence"]
-    bare = bool(system) and bool(os.environ.get("ANTHROPIC_API_KEY"))   # --bare drops the reminders itself, on a key
-    if bare:
+    if system and os.environ.get("ANTHROPIC_API_KEY"):   # --bare leaves the CLI's reminders out, and needs a key
         cmd.append("--bare")
-    env = stripped() if system and not bare else dict(os.environ)
+    env = dict(os.environ)
     if not thinking:
         env["MAX_THINKING_TOKENS"] = "0"
     for attempt in (1, 2):
@@ -1311,7 +1269,7 @@ def run_cmd(a):
         """Built fresh for every call, because the why moves. A step back can rewrite it, and the man
         at the next sitting has to be the one who wants that, not the one who wanted the old thing."""
         return (
-        "You are the owner of a project, and you are this person:\n\n" + life.who +
+        UNSEEN + "You are the owner of a project, and you are this person:\n\n" + life.who +
         "\n\nWhy you want it built, in your own words:\n\n" + life.get("stake", pname) +
         (("\n\nWhere you think it could go, and what you think comes of it:\n" + S["stakes"][-1]["could_become"]
           + "\n" + S["stakes"][-1]["follows"]) if S["stakes"][-1].get("could_become") else "") +

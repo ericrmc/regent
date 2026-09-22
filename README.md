@@ -396,11 +396,10 @@ and the owner's models.
 across, and they never learn it was you.
 
 The CLI tells every model today's date, your email and the machine it runs on.
-The owner, the readings and the night runs never see that. With an API key in
-the environment their calls run `--bare`, which is Claude Code's own way of
-leaving it out; on a login there is no such way, so those calls go through a
-pass-through in the harness that drops the reminders. The builder's calls go
-direct either way.
+With an API key in the environment, the owner's and the night's calls run
+`--bare`, Claude Code's own way of leaving that out. On a login there is no
+such way, and one sentence in their prompts tells them it is the machinery's
+and not theirs. The builder's calls go direct either way.
 
 ## Watching a run
 
