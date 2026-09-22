@@ -52,7 +52,7 @@ turns_per_day: 1.2
 
 ## Show
 
-`ls && for d in */; do [ -d "$d" ] && echo "--- python3 linkcheck.py $d" && python3 linkcheck.py "$d" | tail -12; done 2>&1 | tail -40`
+`ls && for d in */; do [ -d "$d" ] && echo "--- python3 linkcheck.py $d" && python3 linkcheck.py "$d"; done 2>&1`
 
 ## Stop
 

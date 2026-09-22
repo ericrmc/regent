@@ -744,7 +744,8 @@ def charter_faults(md: str, ch: dict[str, str]) -> list[str]:
 
 class Strip(http.server.BaseHTTPRequestHandler):
     """The CLI tells every model today's date, the human's email and the machine it is on, in reminders placed before
-    the prompt. No flag turns that off, so calls that are not the builder go to the API through this, which drops them."""
+    the prompt. --bare turns that off but only on an API key; on a login, calls that are not the builder go to the API
+    through this, which drops them."""
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -809,7 +810,10 @@ def claude(run: Run, role: str, model: str, prompt: str, *, cwd: Path, system: s
         cmd += ["--resume", session] if resume else ["--session-id", session]
     else:
         cmd += ["--no-session-persistence"]
-    env = stripped() if system else dict(os.environ)
+    bare = bool(system) and bool(os.environ.get("ANTHROPIC_API_KEY"))   # --bare drops the reminders itself, on a key
+    if bare:
+        cmd.append("--bare")
+    env = stripped() if system and not bare else dict(os.environ)
     if not thinking:
         env["MAX_THINKING_TOKENS"] = "0"
     for attempt in (1, 2):
@@ -891,18 +895,6 @@ def ask(run: Run, role: str, model: str, prompt: str, schema: dict | None = None
     got = claude(run, role, model, prompt, cwd=run.root, tools="", schema=schema, system=system or PLAIN,
                  thinking=thinking)
     return got["data"] if schema else got["text"].strip()
-
-
-def cut(text: str, minutes: float) -> str:
-    """The skim is done by withholding. A model reads every token it is handed,
-    so he is handed what his minutes bought and told how much he left unread."""
-    lines = text.splitlines()
-    budget = int(minutes * 1.5) + 6
-    if len(lines) <= budget:
-        return text
-    loud = [ln for ln in lines[budget // 2:-budget // 4] if re.search(r"fail|error|assum|recommend|cannot|\bnot\b", ln, re.I)]
-    kept = lines[:budget // 2] + loud[:budget // 4] + lines[-budget // 4:]
-    return "\n".join(kept) + f"\n[you read {len(kept)} of {len(lines)} lines. The rest is there. You did not get to it.]"
 
 
 def crossed(t: dict) -> str:
@@ -1075,7 +1067,10 @@ def shell(cmd: str, cwd: Path, timeout: int, lines: int) -> tuple[str, bool]:
         got, ok = c.stdout + c.stderr, c.returncode == 0
     except subprocess.TimeoutExpired as e:
         got, ok = f"[gave up after {timeout}s]\n" + (e.stdout or "") + (e.stderr or ""), False
-    return "\n".join(got.strip().splitlines()[-lines:]), ok
+    kept = got.strip().splitlines()
+    if len(kept) > lines:   # a cap is the harness's doing, and it says so, so nobody else gets blamed for it
+        kept = [f"[the harness kept the last {lines} of {len(kept)} lines]"] + kept[-lines:]
+    return "\n".join(kept), ok
 
 
 def owner_dir(name: str) -> Path:
@@ -1419,7 +1414,7 @@ def run_cmd(a):
                 lexicon=", ".join(w["word"] for w in S["words"]) or "none yet", text=text), TAKEN, thinking=False)
         except Exception as e:   # a reading that fails costs him the meaning, not the run
             run.log("take_failed", of=of, error=str(e)[:300])
-            return cut(text, minutes)
+            return text[:4000] + ("\n[the harness cut this off here]" if len(text) > 4000 else "")
         learned = []
         # Hyphens and spaces are the same seam, so "bad lines" and "bad-lines" are one word he owns, not two.
         for w in [re.sub(r"[\s-]+", " ", x.strip().lower()) for x in t["picked_up"][:2] if x.strip()]:
@@ -1657,7 +1652,7 @@ def run_cmd(a):
             # He is told whether it passed and no more. What a failing check meant was folded into the reading above.
             + ("THE HARNESS RAN THE CHECK AFTER THE BUILDER'S LAST TURN. It "
                + ("passed.\n\n" if S["check_ok"] else "failed.\n\n") if S["last_check"] else "")
-            + (f"WHAT THE THING PRINTED WHEN THE HARNESS RAN IT JUST NOW\n{cut(S['last_show'], minutes)}\n\n"
+            + (f"WHAT THE THING PRINTED WHEN THE HARNESS RAN IT JUST NOW, all of it\n{S['last_show']}\n\n"
                if S["last_show"] else "")
         )
         talk = ask_where(ctx, minutes, rng)[0] if asking else ""
@@ -1845,7 +1840,7 @@ def run_cmd(a):
                           + 0.02 * min(3, len(built_now)) - 0.05 * wrong - 0.03 * min(2, stale), 0, 1)
         was_show = S["last_show"]
         if show_cmd:
-            S["last_show"], _ = shell(show_cmd, project, a.timeout, 60)
+            S["last_show"], _ = shell(show_cmd, project, a.timeout, 300)
         # Sameness: a sitting where he wanted nothing new, took and answered nothing, and the thing came out
         # looking exactly as it did last time. It runs as an average, because one quiet sitting is not boredom.
         # A push that got him somewhere clears it, so he is not pushing every sitting from here on.

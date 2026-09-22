@@ -333,7 +333,7 @@ a worked one.
 | Tools | Commands the owner may run when trying the thing |
 | Network | Domains a shell may reach, one per `-` line. Absent means none |
 | Check | One shell command run after every sitting. Its exit code is pass or fail |
-| Show | One shell command that uses the thing. This is how the owner sees it work |
+| Show | One shell command that uses the thing. This is how the owner sees it work, so it prints whole: no `tail`, no `head`. The harness keeps the last 300 lines and says so when it cuts |
 | Stop | When the run is finished, in words. The owner reads it and can call the run done early; the harness stops when the check agrees |
 
 ## Commands
@@ -388,9 +388,11 @@ and the owner's models.
 across, and they never learn it was you.
 
 The CLI tells every model today's date, your email and the machine it runs on.
-The owner, the readings and the night runs never see that: their calls go
-through a pass-through in the harness that drops those reminders. The builder's
-calls go direct.
+The owner, the readings and the night runs never see that. With an API key in
+the environment their calls run `--bare`, which is Claude Code's own way of
+leaving it out; on a login there is no such way, so those calls go through a
+pass-through in the harness that drops the reminders. The builder's calls go
+direct either way.
 
 ## Watching a run
 
