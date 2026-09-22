@@ -73,10 +73,42 @@ unfinished run at its next day; `--new` starts over.
   so its commits never land in a repository above it.
 - Both the owner and the builder work inside Claude Code's sandbox. A shell can
   write only inside the project and reach only the domains the charter lists
-  under `## Network`. No Network section means no network.
+  under `## Network`. No Network section means no network. Under another agent
+  the fence is that CLI's own and the Network section is not applied: see
+  **Other agents** below.
 - A run spends real money on model calls. As a guide, a twenty-day run at
   about one sitting a day has cost 40 to 75 US dollars and taken two to three
   hours, nearly all of it the builder's turns. Start with `--days 3`.
+
+## Other agents
+
+`--agent codex` and `--agent cursor` run the whole thing on the Codex CLI or the
+Cursor CLI instead: not the builder's turns only, but the owner's decisions, the
+sealed night calls, the readings and the read-backs as well. The choice is kept
+in the run, so a resume is the agent the run started as and passing a different
+one is refused.
+
+| | Claude Code | Codex (`codex exec`) | Cursor (`agent`) |
+| --- | --- | --- | --- |
+| System prompt | `--system-prompt` | a file, `model_instructions_file`, replacing its own | none: it goes at the top of the message |
+| Structured answer | `--json-schema`, enforced | `--output-schema`, enforced | asked for in words, then read out of the text |
+| Sealed call | no tools, no settings, no servers | `-s read-only --ephemeral` | `--mode ask` |
+| Sessions | `--session-id` and `--resume` | `thread_id`, then `codex exec resume` | `session_id`, then `--resume` |
+| The builder's leash | tool names, `acceptEdits` | `-s workspace-write` | `--force --sandbox enabled` |
+| Reasoning | `--effort`, and off for the prose stages | `model_reasoning_effort` | nothing to set |
+| Cost | reported per call | not reported, so 0 | not reported, so 0 |
+
+Two things the harness gives up outside Claude Code. The charter's `## Network`
+section is not applied: each of those CLIs fences a shell with its own sandbox
+and neither takes a list of domains, so the run says so when it prints the
+charter. And `--model` is passed through only when you name a real one: the
+harness sizes its own small stages in Claude's names, and `haiku` means nothing
+to either, so those stages run on the CLI's default model.
+
+Both adapters were written from each CLI's published documentation and its own
+`--help`, and tested against stand-ins that speak its event stream
+(`tests/fake_codex.py`, `tests/fake_cursor.py`). Neither has been run against a
+signed-in CLI.
 
 ## The architecture
 
@@ -393,6 +425,12 @@ the mean sittings a day, so `0.5` is every other day. `--dream-gap` is the mean
 nights between spoon cycles. `--model` and `--regent-model` choose the builder's
 and the owner's models.
 
+`--agent` chooses which CLI makes every call of the run, the owner's decisions
+and the nights as much as the builder's turns: `claude`, `codex` or `cursor`,
+and **Other agents** above is what each can and cannot do. A fourth is one file
+under `regent/agents/`, implementing `_run` against the contract documented in
+`regent/agents/__init__.py`.
+
 `say` is from you and the owner knows it. `plant` is something they come
 across, and they never learn it was you.
 
@@ -435,11 +473,14 @@ regent/
     watch.py                 the live page, served or exported
     schemas.py               the shape of every structured answer
     prompts/*.md             every prompt, one file each, text as it goes down the wire
-    agents/                  how a model is called: the interface, and the claude CLI
+    agents/__init__.py       the one interface every call goes through, and all that is not a CLI's own
+    agents/claude.py         the claude CLI: the flags, and the stream-json events they come back as
+    agents/codex.py          the codex CLI: instructions and schema as files, and a JSONL event stream
+    agents/cursor.py         the cursor CLI: everything that binds said in the message, for want of anywhere else
     watch.html               the live page
   examples/                  worked charters
   owners/<name>/             a sample owner: bible.md, disposition.json, events.md, pursuits.md
-  tests/                     the pure functions, and one whole run against a stand-in CLI
+  tests/                     the pure functions, and a whole run against a stand-in for each CLI
 
 ~/.regent/                   or $REGENT_HOME
   owners/<name>/             owners you cast, each with life.db

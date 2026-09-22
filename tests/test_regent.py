@@ -17,16 +17,21 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from regent import prompts
+from regent import agents, prompts
+from regent.agents import Adapter
+from regent.agents.claude import Claude
+from regent.agents.cursor import schema_in_words
 from regent.charter import charter_faults, sections
 from regent.crossing import crossed, gauge, places_named, unmark, words
 from regent.dice import clip, due, how_it_goes, in_words, poisson, thread_due, thread_move
 from regent.field import CAME, STREAMS, alike, appetite, cool, feed, ignite, theta
 from regent.night import catch
+from regent.schemas import DECISION, PICTURE, SIFTED, TAKEN
 
 CHARTER = """# A tiny thing
 
@@ -293,13 +298,121 @@ class Prompts(unittest.TestCase):
         self.assertIn("belongs to the machinery", prompts.UNSEEN)
 
 
+class Stub(Adapter):
+    """An adapter that answers from a list, so the base class's retry can be watched."""
+
+    PAUSE = 0
+
+    def __init__(self, answers):
+        self.answers, self.seen = list(answers), []
+
+    def _run(self, prompt, **kw):
+        self.seen.append(kw)
+        raw = {"text": "", "data": None, "seconds": 0.1, "denials": [], "session": kw.get("session"),
+               "error": "", "cost": 0, "tools": 0, "subtype": "success"}
+        return {**raw, **self.answers.pop(0)}
+
+
+class Agents(unittest.TestCase):
+    ANSWER: ClassVar[dict] = {"type": "object", "properties": {"said": {"type": "string"}}, "required": ["said"]}
+
+    def test_a_bare_json_object_is_the_answer(self):
+        self.assertEqual(Adapter.parse_structured('{"said": "aye"}', self.ANSWER), {"said": "aye"})
+
+    def test_a_fenced_block_is_found_in_prose(self):
+        text = 'Here you are.\n\n```json\n{"said": "aye"}\n```\n\nHope that helps.'
+        self.assertEqual(Adapter.parse_structured(text, self.ANSWER), {"said": "aye"})
+
+    def test_the_outermost_braces_are_found_in_prose(self):
+        self.assertEqual(Adapter.parse_structured('Sure: {"said": "aye"} — done.', self.ANSWER), {"said": "aye"})
+
+    def test_half_an_answer_is_not_an_answer(self):
+        self.assertIsNone(Adapter.parse_structured('{"other": 1}', self.ANSWER))
+        self.assertIsNone(Adapter.parse_structured("[1, 2]", self.ANSWER))
+        self.assertIsNone(Adapter.parse_structured("no json at all", self.ANSWER))
+        self.assertIsNone(Adapter.parse_structured("", self.ANSWER))
+
+    def test_the_builder_is_given_longer_than_anything_else(self):
+        a = Claude()
+        self.assertGreater(a.patience("claude"), a.patience("take"))
+
+    def test_the_factory_finds_each_one_that_is_written(self):
+        self.assertIsInstance(agents.builder("claude"), Claude)
+        self.assertIsInstance(agents.builder(), Claude)
+        self.assertEqual([agents.builder(n).name for n in ("codex", "cursor")], ["codex", "cursor"])
+        with self.assertRaises(SystemExit) as e:
+            agents.builder("gemini")
+        self.assertIn("regent/agents/gemini.py", str(e.exception))
+
+    def test_only_claude_can_be_handed_the_charters_domains(self):
+        self.assertTrue(agents.builder("claude").holds_network)
+        self.assertFalse(any(agents.builder(n).holds_network for n in ("codex", "cursor")))
+
+    def test_a_schema_said_in_words_carries_its_whole_shape(self):
+        said = schema_in_words(SIFTED)
+        self.assertIn('- "candidates": a list of an object with kind (one of "ask", "doubt", '
+                      '"wish", "worry"), text (text), test (text), from_indexes (a list of a whole '
+                      "number), why_it_might_fail (text)", said)
+        self.assertEqual(schema_in_words(TAKEN).splitlines()[:2],
+                         ['- "taken": text', '- "not_followed": a list of text'])
+        self.assertIn('- "challenged": true or false', schema_in_words(DECISION))
+        # Every key the harness will read off the answer has to be named, or the stage cannot answer.
+        for schema in (DECISION, TAKEN, SIFTED, PICTURE):
+            for key in schema["required"]:
+                self.assertIn(f'- "{key}":', schema_in_words(schema))
+
+    def call(self, stub, **kw):
+        events = []
+        got = stub.call("say something", model="sonnet", cwd=Path("."), on_tool=lambda *a: None,
+                        on_event=lambda kind, **f: events.append((kind, f)), **kw)
+        return got, events
+
+    def test_a_call_that_came_back_with_nothing_goes_again(self):
+        stub = Stub([{"error": "overloaded"}, {"text": "second time lucky"}])
+        got, events = self.call(stub, session="s1")
+        self.assertEqual(got["text"], "second time lucky")
+        self.assertEqual([k for k, _ in events], ["empty", "call", "call"])
+        self.assertNotEqual(stub.seen[1]["session"], "s1")   # the id may be held by the session that fell over
+
+    def test_an_answer_missing_from_the_text_goes_again_then_gives_up(self):
+        stub = Stub([{"text": "I would rather explain."}, {"text": '{"said": "aye"}'}])
+        got, events = self.call(stub, schema=self.ANSWER)
+        self.assertEqual(got["data"], {"said": "aye"})
+        self.assertIn("retry", [k for k, _ in events])
+        with self.assertRaises(RuntimeError) as e:
+            self.call(Stub([{"text": "no"}, {"text": "still no"}]), schema=self.ANSWER)
+        self.assertIn("no structured output", str(e.exception))
+
+    def test_a_cli_that_enforced_the_schema_is_believed(self):
+        got, _ = self.call(Stub([{"data": {"said": "aye"}, "text": "ignored"}]), schema=self.ANSWER)
+        self.assertEqual(got["data"], {"said": "aye"})
+
+    def test_running_out_of_money_is_not_retried(self):
+        stub = Stub([{"text": "", "subtype": "error_max_budget_usd"}])
+        with self.assertRaises(RuntimeError):
+            self.call(stub, schema=self.ANSWER)
+        self.assertEqual(len(stub.seen), 1)
+
+    def test_what_comes_back_is_the_seven_keys(self):
+        got, _ = self.call(Stub([{"text": "hello", "cost": 0.5}]))
+        self.assertEqual(sorted(got), ["cost", "data", "denials", "error", "seconds", "session", "text"])
+
+
 def has_git() -> bool:
     return shutil.which("git") is not None
 
 
 @unittest.skipUnless(has_git(), "the builder's turn commits, so a whole run needs git")
 class WholeRun(unittest.TestCase):
-    """Three days of a life, end to end, against a stand-in for the CLI."""
+    """Three days of a life, end to end, against a stand-in for the CLI.
+
+    Subclassed once per agent, because a run is the only thing that proves an adapter: every
+    stage of it goes through the one, and a sealed call that came back the wrong shape or a
+    session that was not carried stops the run rather than failing quietly somewhere."""
+
+    AGENT = ""              # the flag, left off for Claude so the default is exercised too
+    CLI = "claude"          # what the adapter looks for on PATH
+    FAKE = "fake_claude.py"
 
     @classmethod
     def setUpClass(cls):
@@ -315,12 +428,13 @@ class WholeRun(unittest.TestCase):
         (cls.project / ".regent" / "charter.md").write_text(CHARTER)
         bin_dir = tmp / "bin"
         bin_dir.mkdir()
-        shim = bin_dir / "claude"
-        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{REPO / "tests" / "fake_claude.py"}" "$@"\n')
+        shim = bin_dir / cls.CLI
+        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{REPO / "tests" / cls.FAKE}" "$@"\n')
         shim.chmod(0o755)
         cls.env = {**os.environ, "REGENT_HOME": str(cls.home), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
         cls.env.pop("ANTHROPIC_API_KEY", None)
         cls.out = cls.regent("run", "--project", str(cls.project), "--owner", "piotr-mahon",
+                             *(["--agent", cls.AGENT] if cls.AGENT else []),
                              "--days", "3", "--turns-per-day", "2", "--dream-gap", "1", "--new")
         cls.root = max((cls.home / "runs").glob("thing-*"))
 
@@ -329,9 +443,13 @@ class WholeRun(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
+    def tried(cls, *args) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "regent", *args], cwd=REPO, env=cls.env,
+                              capture_output=True, text=True, timeout=900)
+
+    @classmethod
     def regent(cls, *args) -> str:
-        p = subprocess.run([sys.executable, "-m", "regent", *args], cwd=REPO, env=cls.env,
-                           capture_output=True, text=True, timeout=900)
+        p = cls.tried(*args)
         if p.returncode != 0:
             raise AssertionError(f"regent {' '.join(args)} failed:\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
         return p.stdout
@@ -347,7 +465,13 @@ class WholeRun(unittest.TestCase):
         self.assertIn("digest:", self.out)
 
     def test_the_charter_was_read_out_loud(self):
-        self.assertIn("charter: 3 days at 2 sittings a day", self.out)
+        agent = self.AGENT or "claude"
+        self.assertIn(f"charter: 3 days at 2 sittings a day, run by {agent}", self.out)
+        # Only Claude Code can be handed the charter's domains, and a run that cannot says so at the start.
+        if agent == "claude":
+            self.assertIn("web off", self.out)
+        else:
+            self.assertIn(f"web is {agent}'s own sandbox to decide", self.out)
 
     def test_the_digest_is_written(self):
         digest = (self.root / "digest.md").read_text()
@@ -375,9 +499,36 @@ class WholeRun(unittest.TestCase):
         finally:
             c.close()
 
+    def save(self, state: dict):
+        c = sqlite3.connect(str(self.root / "run.db"))
+        c.execute("INSERT OR REPLACE INTO state(k, v) VALUES('run', ?)", (json.dumps(state),))
+        c.commit()
+        c.close()
+
+    def test_the_agent_is_the_runs_own(self):
+        self.assertEqual(self.state()["agent"], self.AGENT or "claude")
+        self.assertIn("--agent", self.regent("run", "--help"))
+
+    def test_a_resume_under_another_agent_is_refused(self):
+        """The builder's session and its memory of the work are inside the CLI that made them,
+        so swapping one for another mid-run is refused rather than half honoured."""
+        state = self.state()
+        state["finished"] = False
+        self.save(state)
+        other = "codex" if (self.AGENT or "claude") != "codex" else "cursor"
+        try:
+            p = self.tried("run", "--project", str(self.project), "--owner", "piotr-mahon", "--agent", other)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn(f"belongs to {self.AGENT or 'claude'}, not {other}", p.stdout + p.stderr)
+            self.assertFalse(self.state()["finished"])   # it stopped before it did anything to the run
+        finally:
+            state["finished"] = True
+            self.save(state)
+
     def test_the_state_is_resumable(self):
         state = self.state()
-        for key in ("charter", "owner", "day_i", "turn", "reqs", "ideas", "field", "stakes", "counts", "session"):
+        for key in ("charter", "owner", "day_i", "turn", "reqs", "ideas", "field", "stakes", "counts", "session",
+                    "agent"):
             self.assertIn(key, state)
         self.assertTrue(state["finished"])
         self.assertGreater(state["turn"], 0)
@@ -418,6 +569,20 @@ class WholeRun(unittest.TestCase):
         after = self.state()
         self.assertGreater(after["turn"], turns_before)
         self.assertTrue(after["finished"])
+
+
+class WholeRunOnCodex(WholeRun):
+    """The same three days again, driven entirely by the Codex CLI's JSONL event stream."""
+
+    AGENT = CLI = "codex"
+    FAKE = "fake_codex.py"
+
+
+class WholeRunOnCursor(WholeRun):
+    """And again on Cursor, where nothing but the message binds and the schema is asked for in words."""
+
+    AGENT, CLI = "cursor", "agent"
+    FAKE = "fake_cursor.py"
 
 
 if __name__ == "__main__":

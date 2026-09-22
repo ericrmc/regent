@@ -47,7 +47,6 @@ def run_cmd(a):
     run = Run(root)
     S = None if fresh else run.load()
     pname = str(project)
-    adapter = agents.builder()
 
     if S:
         life = Life(owner_dir(S["owner"]))
@@ -65,10 +64,18 @@ def run_cmd(a):
              "since_dream": 0, "since_step": 0, "since_look": 2, "session_turns": 0, "wants_look": had_code,
              "existing": had_code, "last_reply": "", "last_check": "", "last_show": "", "check_ok": False,
              "built_once": had_code, "session": str(uuid.uuid4()), "started": False, "handover": "",
+             "agent": a.agent or "claude",
              "claude_secs": 0.0, "blocking": 0.0,
              "counts": {"direct": 0, "challenge": 0, "constrain": 0, "cycles": 0, "step_backs": 0, "looks": 0,
                         "empty_days": 0, "fresh": 0}}
 
+    # The agent is the run's, not the command line's: a run resumed with the flag left off is the
+    # same agent it started as, and one started before there was a flag was Claude.
+    S.setdefault("agent", "claude")
+    if a.agent and a.agent != S["agent"]:   # its sessions, and the builder's memory of the work, are in that CLI
+        raise SystemExit(f"this run belongs to {S['agent']}, not {a.agent}. Resume it with no --agent, "
+                         f"or start a new run with --new.")
+    adapter = agents.builder(S["agent"])
     S.setdefault("since_ask", 2)
     S.setdefault("idle", 0)
     S.setdefault("assumptions", [])
@@ -101,8 +108,13 @@ def run_cmd(a):
     deny = [] if domains else ["WebFetch", "WebSearch"]
     for fault in charter_faults(S["charter"], ch):
         print(f"charter: {fault}")
-    print(f"charter: {days} days at {tpd:g} sittings a day; the owner may run {', '.join(sorted({t.split()[0] for t in tool_lines})) or 'ls'}; "
-          f"web {'open to ' + ', '.join(domains) if domains else 'off'}; check {'set' if check_cmd else 'none'}, show {'set' if show_cmd else 'none'}")
+    # Only Claude Code can be handed the list of domains. Under another CLI the Network section is a
+    # thing the charter asks for and nothing enforces, and a run days long has to say so at the start.
+    web = (f"web {'open to ' + ', '.join(domains) if domains else 'off'}" if adapter.holds_network else
+           f"web is {adapter.name}'s own sandbox to decide, so the charter's Network section is not applied")
+    print(f"charter: {days} days at {tpd:g} sittings a day, run by {adapter.name}; the owner may run "
+          f"{', '.join(sorted({t.split()[0] for t in tool_lines})) or 'ls'}; "
+          f"{web}; check {'set' if check_cmd else 'none'}, show {'set' if show_cmd else 'none'}")
     # Claude Code's own sandbox holds them both: a shell can write only inside the project and reach only the domains the
     # charter's Network section lists. A builder's subagent once left its scratch files in /tmp, and nothing stopped it.
     fence = ["--settings", json.dumps({"sandbox": {"enabled": True, "autoAllowBashIfSandboxed": True,
@@ -149,7 +161,8 @@ def run_cmd(a):
 
     if a.watch:
         watch_cmd(a, root, background=True)
-    run.log("start", project=pname, owner=S["owner"], days=days, turns_per_day=tpd, seed=a.seed, resumed=not fresh)
+    run.log("start", project=pname, owner=S["owner"], days=days, turns_per_day=tpd, seed=a.seed, resumed=not fresh,
+            agent=S["agent"])
     run.say(f"regent: {life.root.name} on {project}, {days} days at about {tpd:g} sittings a day, run {root}")
     while S["day_i"] < days:
         rng = random.Random(f"{a.seed}-{S['day_i']}")
@@ -226,6 +239,9 @@ def main():
     r.add_argument("--runs", default=None, help=f"where runs live. Default {HOME / 'runs'}")
     r.add_argument("--new", action="store_true", help="start a new run instead of resuming the last one")
     r.add_argument("--seed", type=int, default=1)
+    r.add_argument("--agent", default=None, choices=("claude", "codex", "cursor"),
+                   help="which CLI makes every call, the owner's and the builder's. Default claude. Kept in the "
+                        "run, so a resume is the agent the run started as, and passing another one is refused")
     r.add_argument("--model", default="sonnet", help="the builder")
     r.add_argument("--regent-model", default="sonnet")
     r.add_argument("--effort", default="low")
@@ -244,6 +260,7 @@ def main():
     c.add_argument("--name", default=None, help="folder name. Default: their own")
     c.add_argument("--seed", type=int, default=int(time.time()))
     c.add_argument("--model", default="sonnet")
+    c.add_argument("--agent", default="claude", choices=("claude", "codex", "cursor"))
     for name, helptext in (("say", "leave him a note, shown at his next sitting"),
                            ("plant", "something he comes across, never traced to you")):
         s = sub.add_parser(name, help=helptext)

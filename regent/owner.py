@@ -16,7 +16,7 @@ import time
 import uuid
 
 from regent import agents, night, prompts
-from regent.agents.claude import BUILD_TOOLS, SEALED
+from regent.agents import BUILD_TOOLS
 from regent.charter import shell
 from regent.crossing import crossed, gauge, words
 from regent.dice import clip, poisson
@@ -174,7 +174,7 @@ def ask_where(cx: Context, ctx: str, minutes: float, rng: random.Random) -> tupl
                     "That is all the time you have for questions. Set enough true. " if k == rounds else
                     "Ask your next question, or set enough true if you have heard what you need. "))),
                 cwd=cx.root, tools="", system=cx.system(), schema=ASKED, who=life.root.name,
-                settings=SEALED + cx.fence)["data"]
+                settings=cx.adapter.SEALED + cx.fence)["data"]
         except Exception as e:   # a question that fails costs the round, not the sitting
             run.log("asked_failed", n=S["turn"], error=str(e)[:300])
             break
@@ -312,7 +312,7 @@ def sitting(cx: Context, day: int, rng: random.Random, met: str) -> str:
         return agents.call(run, cx.adapter, "regent", a.regent_model, ctx + extra, cwd=cx.project if spot else cx.root,
                            tools="Read,Grep,Glob,Bash" if spot else "",
                            allowed=("Read,Grep,Glob," + cx.his_bash) if spot else None, usd=SPOT_USD if spot else None,
-                           system=cx.system(), schema=DECISION, who=life.root.name, settings=SEALED + cx.fence)["data"]
+                           system=cx.system(), schema=DECISION, who=life.root.name, settings=cx.adapter.SEALED + cx.fence)["data"]
     t = time.time()
     try:
         d = decide(look)

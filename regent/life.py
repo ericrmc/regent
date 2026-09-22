@@ -82,7 +82,7 @@ class Life:
     def calendar(self, n: int) -> str:
         """A weekday and a point in the year, derived from day one and never stored. Josh comes on
         Thursdays and the hives follow the light, and neither can happen if every day is nameless."""
-        first = self.q("SELECT iso FROM day ORDER BY n LIMIT 1")
+        first = self.q("SELECT iso FROM day WHERE iso IS NOT NULL ORDER BY n LIMIT 1")   # an old life may have undated days
         base = time.strptime(first[0][0], "%Y-%m-%d") if first else time.localtime()
         t = time.localtime(time.mktime(base) + (n - 1) * 86400)
         return (f"a {time.strftime('%A', t)}, "
@@ -183,7 +183,7 @@ def cast_cmd(a):
         vocab = []
     rolled = rng.sample(vocab, 7) if vocab else ["(none rolled)"]
     run = Run(HOME / "casting")
-    got = agents.ask(run, agents.builder(), "cast", a.model, prompts.load("cast").format(
+    got = agents.ask(run, agents.builder(a.agent), "cast", a.model, prompts.load("cast").format(
         age=int(clip(rng.gauss(48, 15), 19, 84)), dials=", ".join(f"{k} {v:+.2f}" for k, v in dials.items()),
         words=", ".join(rolled), pins="; ".join(a.pin) or "nothing"), CAST)
     root = HOME / "owners" / (a.name or re.sub(r"[^a-z0-9-]", "", got["slug"].lower()) or f"owner-{a.seed}")
